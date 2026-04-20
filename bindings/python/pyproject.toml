@@ -37,9 +37,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ColdMeekly/spotifyctl"
-Issues = "https://github.com/ColdMeekly/spotifyctl/issues"
+Homepage = "https://spotifyctl.cldmk.ly"
 Source = "https://github.com/ColdMeekly/spotifyctl"
+Issues = "https://github.com/ColdMeekly/spotifyctl/issues"
+Changelog = "https://github.com/ColdMeekly/spotifyctl/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["libspotifyctl"]

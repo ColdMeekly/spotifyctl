@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(libspotifyctl
     VERSION 0.3.0
     DESCRIPTION "Offline (no Web API) library for reading from and controlling Spotify on Windows"
-    HOMEPAGE_URL "https://github.com/ColdMeekly/spotifyctl"
+    HOMEPAGE_URL "https://spotifyctl.cldmk.ly"
     LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
