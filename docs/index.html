@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>libspotifyctl — control Spotify on Windows from C++, Python, Node, or shell</title>
+<meta name="description" content="Windows library and CLI for reading and controlling the Spotify desktop app. C++, C, Python, Node bindings. Offline (no Web API), uses SMTC and Core Audio. MIT.">
+<meta name="keywords" content="spotify, spotifyctl, libspotifyctl, windows, smtc, core audio, now playing, media controls, c++, python, node, cli, dll">
+<link rel="canonical" href="https://spotifyctl.cldmk.ly/">
+<meta property="og:title" content="libspotifyctl">
+<meta property="og:description" content="Windows library and CLI for reading and controlling the Spotify desktop app — offline, no Web API.">
+<meta property="og:url" content="https://spotifyctl.cldmk.ly/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="libspotifyctl">
+<meta name="twitter:description" content="Windows library and CLI for reading and controlling the Spotify desktop app — offline, no Web API.">
+<style>
+:root {
+  --bg: #0e1116;
+  --fg: #e8eaed;
+  --muted: #9aa0a6;
+  --accent: #1db954;
+  --code-bg: #161b22;
+  --border: #30363d;
+  --link: #58a6ff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: var(--bg); color: var(--fg);
+  line-height: 1.6; font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 820px; margin: 0 auto; padding: 4rem 1.5rem; }
+header { margin-bottom: 2rem; }
+h1 { font-size: 3rem; margin: 0 0 0.5rem; font-weight: 700; letter-spacing: -0.02em; }
+h1 .accent { color: var(--accent); }
+.tagline { font-size: 1.2rem; color: var(--muted); margin: 0 0 1.5rem; max-width: 60ch; }
+.badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.badges img { display: block; }
+h2 { font-size: 1.5rem; margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+h3 { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+pre, code { font-family: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; font-size: 0.875rem; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 1rem; overflow-x: auto; margin: 0.5rem 0;
+}
+code { background: var(--code-bg); padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.85em; }
+pre code { background: transparent; padding: 0; }
+ul { padding-left: 1.25rem; }
+li { margin-bottom: 0.25rem; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.feature { padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.01); }
+.feature strong { display: block; color: var(--fg); margin-bottom: 0.25rem; font-weight: 600; }
+.feature span { color: var(--muted); font-size: 0.9rem; }
+footer { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.875rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>lib<span class="accent">spotifyctl</span></h1>
+    <p class="tagline">Read state from and control the Spotify desktop app on Windows &mdash; from C++, C, Python, Node, or your shell. Offline. No Web API.</p>
+    <div class="badges">
+      <a href="https://pypi.org/project/libspotifyctl/"><img alt="PyPI" src="https://img.shields.io/pypi/v/libspotifyctl?label=pypi&amp;color=1db954"></a>
+      <a href="https://www.npmjs.com/package/libspotifyctl"><img alt="npm" src="https://img.shields.io/npm/v/libspotifyctl?label=npm&amp;color=1db954"></a>
+      <a href="https://github.com/ColdMeekly/spotifyctl"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ColdMeekly/spotifyctl?label=stars&amp;style=flat&amp;color=1db954"></a>
+      <a href="https://github.com/ColdMeekly/spotifyctl/blob/main/LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-1db954"></a>
+    </div>
+  </header>
+
+  <h2>Install</h2>
+  <h3>Python 3.9+</h3>
+<pre><code>pip install libspotifyctl</code></pre>
+  <h3>Node.js 18+</h3>
+<pre><code>npm install libspotifyctl</code></pre>
+  <h3>C++ / C / CLI (build from source)</h3>
+<pre><code>git clone https://github.com/ColdMeekly/spotifyctl
+cd spotifyctl
+cmake --preset release
+cmake --build --preset release</code></pre>
+
+  <h2>Quickstart</h2>
+  <h3>Python</h3>
+<pre><code>from libspotifyctl import SpotifyClient
+
+with SpotifyClient() as c:
+    c.on_state_changed(
+        lambda s: print(f"[{s.status.name}] {s.artist} &mdash; {s.title}"),
+        replay=True,
+    )
+    input()
+</code></pre>
+
+  <h3>Node.js</h3>
+<pre><code>const { SpotifyClient } = require('libspotifyctl');
+const c = new SpotifyClient();
+c.on('stateChanged', (s) =&gt; console.log(`${s.artist} &mdash; ${s.title}`));
+c.start();
+</code></pre>
+
+  <h3>Shell</h3>
+<pre><code>spotifyctl now-playing --json
+spotifyctl events | jq 'select(.type == "track_changed") | .current.title'
+spotifyctl seek 1:23</code></pre>
+
+  <h2>Why</h2>
+  <div class="feature-grid">
+    <div class="feature">
+      <strong>Offline</strong>
+      <span>No Spotify Web API, no OAuth, no client id, no network. Reads SMTC and Core Audio directly.</span>
+    </div>
+    <div class="feature">
+      <strong>Native</strong>
+      <span>C++20 core compiled to a single DLL. Microseconds to query state. Push events from the OS.</span>
+    </div>
+    <div class="feature">
+      <strong>Multi-language</strong>
+      <span>Same API across C++, C, Python, Node, and a CLI. Pick your stack.</span>
+    </div>
+    <div class="feature">
+      <strong>Full surface</strong>
+      <span>State, transport, per-app volume/mute, smooth position, track and ad edges, album art.</span>
+    </div>
+  </div>
+
+  <h2>Documentation</h2>
+  <ul>
+    <li><a href="https://github.com/ColdMeekly/spotifyctl/blob/main/docs/api-cpp.md">C++ API</a></li>
+    <li><a href="https://github.com/ColdMeekly/spotifyctl/blob/main/docs/api-c.md">C API</a></li>
+    <li><a href="https://github.com/ColdMeekly/spotifyctl/blob/main/docs/api-python.md">Python API</a></li>
+    <li><a href="https://github.com/ColdMeekly/spotifyctl/blob/main/docs/api-node.md">Node.js API</a></li>
+    <li><a href="https://github.com/ColdMeekly/spotifyctl/blob/main/docs/cli.md"><code>spotifyctl</code> CLI</a></li>
+  </ul>
+
+  <footer>
+    <p>MIT licensed &middot; <a href="https://github.com/ColdMeekly/spotifyctl">Source on GitHub</a> &middot; Built on SMTC and Core Audio.</p>
+  </footer>
+</main>
+</body>
+</html>
