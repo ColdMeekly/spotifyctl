@@ -52,7 +52,7 @@ jobs:
           "$sha`n${{ github.sha }}" | Out-File "$root/VERSION.txt" -Encoding ascii
           Compress-Archive -Path "$root/*" -DestinationPath "artifacts/libspotifyctl-static-$sha.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: libspotifyctl-static-${{ steps.vars.outputs.short_sha }}
           path: artifacts/libspotifyctl-static-${{ steps.vars.outputs.short_sha }}.zip
@@ -106,13 +106,13 @@ jobs:
           Compress-Archive -Path "$root/*" -DestinationPath "artifacts/libspotifyctl-shared-$sha.zip"
 
       - name: Upload zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libspotifyctl-shared-${{ steps.vars.outputs.short_sha }}
           path: artifacts/libspotifyctl-shared-${{ steps.vars.outputs.short_sha }}.zip
 
       - name: Upload loose DLL for binding jobs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libspotifyctl-dll-${{ steps.vars.outputs.short_sha }}
           path: install-shared/bin/libspotifyctl.dll
@@ -164,7 +164,7 @@ jobs:
           python -m pip install $whl.FullName
           python -c "import libspotifyctl as l; c = l.SpotifyClient(); c.start(); c.stop(); c.close(); print('ok', l.__version__)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: python-dist
           path: bindings/python/dist/*
@@ -201,7 +201,7 @@ jobs:
         working-directory: bindings/node
         run: node --test test/ || echo "::warning::node --test exited nonzero (expected without Spotify present)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: node-dist
           path: bindings/node/*.tgz
