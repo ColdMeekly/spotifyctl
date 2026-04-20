@@ -1,8 +1,8 @@
 # libspotifyctl
 
-A Windows library for reading state from and controlling the Spotify desktop
-application entirely offline. No Spotify Web API, no OAuth, no client id, no
-network calls.
+A Windows library and command-line tool for reading state from and controlling
+the Spotify desktop application entirely offline. No Spotify Web API, no OAuth,
+no client id, no network calls — built on SMTC and Core Audio.
 
 Ships as:
 

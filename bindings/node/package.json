@@ -13,11 +13,18 @@
   ],
   "keywords": [
     "spotify",
+    "spotifyctl",
     "smtc",
     "media",
+    "media-controls",
     "now-playing",
     "windows",
-    "ffi"
+    "win32",
+    "audio",
+    "cli",
+    "ffi",
+    "koffi",
+    "automation"
   ],
   "author": "ColdMeekly",
   "license": "MIT",
