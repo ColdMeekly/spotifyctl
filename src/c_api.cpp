@@ -59,6 +59,41 @@ char* DupString(std::string_view s) {
     return out;
 }
 
+// Stack-local marshal of a PlaybackState into a C struct, with the backing
+// string / byte storage held on the caller's stack (the three output params).
+// Used by both on_state_changed and on_track_changed; the latter calls it
+// twice to build the (prev, curr) pair.
+inline void MarshalState(const PlaybackState& s,
+                         std::string& artistBuf,
+                         std::string& titleBuf,
+                         std::string& albumBuf,
+                         std::vector<std::uint8_t>& artBuf,
+                         spotifyctl_playback_state& cs) {
+    artistBuf = s.artist;
+    titleBuf  = s.title;
+    albumBuf  = s.album;
+    artBuf.resize(s.albumArt.size());
+    for (std::size_t i = 0; i < s.albumArt.size(); ++i) {
+        artBuf[i] = static_cast<std::uint8_t>(s.albumArt[i]);
+    }
+
+    cs.status        = ToCStatus(s.status);
+    cs.artist        = artistBuf.c_str();
+    cs.title         = titleBuf.c_str();
+    cs.album         = albumBuf.c_str();
+    cs.position_ms   = s.position.count();
+    cs.duration_ms   = s.duration.count();
+    cs.album_art     = artBuf.empty() ? nullptr : artBuf.data();
+    cs.album_art_len = artBuf.size();
+    cs.can_seek      = s.canSeek      ? 1 : 0;
+    cs.can_skip_next = s.canSkipNext  ? 1 : 0;
+    cs.can_skip_prev = s.canSkipPrev  ? 1 : 0;
+    cs.is_ad         = s.isAd         ? 1 : 0;
+    cs.audible       = s.audible      ? 1 : 0;
+    cs.app_muted     = s.appMuted     ? 1 : 0;
+    cs.app_volume    = s.appVolume;
+}
+
 }  // namespace
 
 // Storage for the strings exposed through spotifyctl_playback_state. Kept
@@ -292,37 +327,30 @@ SPOTIFYCTL_API spotifyctl_token spotifyctl_on_state_changed(spotifyctl_client* c
                                                             spotifyctl_state_cb cb,
                                                             void* user) {
     if (!c || !cb) return 0;
-    auto core_tok = c->core.OnStateChanged.connect(
-        [cb, user](const PlaybackState& s) {
-            // Stack-local storage: pointers are valid for the callback duration only.
-            std::string artist = s.artist;
-            std::string title  = s.title;
-            std::string album  = s.album;
-            std::vector<std::uint8_t> art(s.albumArt.size());
-            for (std::size_t i = 0; i < s.albumArt.size(); ++i) {
-                art[i] = static_cast<std::uint8_t>(s.albumArt[i]);
-            }
+    auto slot = [cb, user](const PlaybackState& s) {
+        std::string artist, title, album;
+        std::vector<std::uint8_t> art;
+        spotifyctl_playback_state cs{};
+        MarshalState(s, artist, title, album, art, cs);
+        cb(&cs, user);
+    };
+    auto core_tok = c->core.OnStateChanged.connect(slot);
+    auto ext = c->reserveToken();
+    c->storeConn(ext, [c, core_tok]() { c->core.OnStateChanged.disconnect(core_tok); });
+    return ext;
+}
 
-            spotifyctl_playback_state cs{};
-            cs.status        = ToCStatus(s.status);
-            cs.artist        = artist.c_str();
-            cs.title         = title.c_str();
-            cs.album         = album.c_str();
-            cs.position_ms   = s.position.count();
-            cs.duration_ms   = s.duration.count();
-            cs.album_art     = art.empty() ? nullptr : art.data();
-            cs.album_art_len = art.size();
-            cs.can_seek      = s.canSeek      ? 1 : 0;
-            cs.can_skip_next = s.canSkipNext  ? 1 : 0;
-            cs.can_skip_prev = s.canSkipPrev  ? 1 : 0;
-            cs.is_ad         = s.isAd         ? 1 : 0;
-            cs.audible       = s.audible      ? 1 : 0;
-            cs.app_muted     = s.appMuted     ? 1 : 0;
-            cs.app_volume    = s.appVolume;
-
-            cb(&cs, user);
-        });
-
+SPOTIFYCTL_API spotifyctl_token spotifyctl_on_state_changed_with_replay(
+    spotifyctl_client* c, spotifyctl_state_cb cb, void* user) {
+    if (!c || !cb) return 0;
+    auto slot = [cb, user](const PlaybackState& s) {
+        std::string artist, title, album;
+        std::vector<std::uint8_t> art;
+        spotifyctl_playback_state cs{};
+        MarshalState(s, artist, title, album, art, cs);
+        cb(&cs, user);
+    };
+    auto core_tok = c->core.OnStateChanged.ConnectAndReplay(slot, c->core.LatestState());
     auto ext = c->reserveToken();
     c->storeConn(ext, [c, core_tok]() { c->core.OnStateChanged.disconnect(core_tok); });
     return ext;
@@ -368,6 +396,64 @@ SPOTIFYCTL_API spotifyctl_token spotifyctl_on_closed(spotifyctl_client* c,
     auto ext = c->reserveToken();
     c->storeConn(ext, [c, core_tok]() { c->core.OnClosed.disconnect(core_tok); });
     return ext;
+}
+
+SPOTIFYCTL_API spotifyctl_token spotifyctl_on_track_changed(spotifyctl_client* c,
+                                                            spotifyctl_track_changed_cb cb,
+                                                            void* user) {
+    if (!c || !cb) return 0;
+    auto core_tok = c->core.OnTrackChanged.connect(
+        [cb, user](const PlaybackState& prev, const PlaybackState& curr) {
+            std::string pArtist, pTitle, pAlbum;
+            std::string cArtist, cTitle, cAlbum;
+            std::vector<std::uint8_t> pArt, cArt;
+            spotifyctl_playback_state pCs{};
+            spotifyctl_playback_state cCs{};
+            MarshalState(prev, pArtist, pTitle, pAlbum, pArt, pCs);
+            MarshalState(curr, cArtist, cTitle, cAlbum, cArt, cCs);
+            cb(&pCs, &cCs, user);
+        });
+    auto ext = c->reserveToken();
+    c->storeConn(ext, [c, core_tok]() { c->core.OnTrackChanged.disconnect(core_tok); });
+    return ext;
+}
+
+SPOTIFYCTL_API spotifyctl_token spotifyctl_on_ad_started(spotifyctl_client* c,
+                                                         spotifyctl_void_cb cb,
+                                                         void* user) {
+    if (!c || !cb) return 0;
+    auto core_tok = c->core.OnAdStarted.connect([cb, user]() { cb(user); });
+    auto ext = c->reserveToken();
+    c->storeConn(ext, [c, core_tok]() { c->core.OnAdStarted.disconnect(core_tok); });
+    return ext;
+}
+
+SPOTIFYCTL_API spotifyctl_token spotifyctl_on_ad_ended(spotifyctl_client* c,
+                                                       spotifyctl_void_cb cb,
+                                                       void* user) {
+    if (!c || !cb) return 0;
+    auto core_tok = c->core.OnAdEnded.connect([cb, user]() { cb(user); });
+    auto ext = c->reserveToken();
+    c->storeConn(ext, [c, core_tok]() { c->core.OnAdEnded.disconnect(core_tok); });
+    return ext;
+}
+
+SPOTIFYCTL_API spotifyctl_token spotifyctl_on_position_changed(spotifyctl_client* c,
+                                                               spotifyctl_position_cb cb,
+                                                               void* user) {
+    if (!c || !cb) return 0;
+    auto core_tok = c->core.OnPositionChanged.connect(
+        [cb, user](std::chrono::milliseconds pos) {
+            cb(static_cast<int64_t>(pos.count()), user);
+        });
+    auto ext = c->reserveToken();
+    c->storeConn(ext, [c, core_tok]() { c->core.OnPositionChanged.disconnect(core_tok); });
+    return ext;
+}
+
+SPOTIFYCTL_API int64_t spotifyctl_latest_position_smooth_ms(const spotifyctl_client* c) {
+    if (!c) return 0;
+    return static_cast<int64_t>(c->core.LatestPositionSmooth().count());
 }
 
 SPOTIFYCTL_API void spotifyctl_disconnect(spotifyctl_client* c, spotifyctl_token token) {

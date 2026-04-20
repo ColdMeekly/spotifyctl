@@ -1,4 +1,5 @@
 #include "impl.h"
+#include "position.h"
 #include "smtc_source.h"
 #include "audio_session.h"
 #include "spotify/title_parser.h"
@@ -7,6 +8,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cwchar>
 #include <vector>
 
@@ -110,7 +112,7 @@ void CALLBACK SpotifyClient::Impl::OnWindowEvent(
     if (!::IsWindow(hwnd)) return;
 
     for (auto* impl : SnapshotRegistry()) {
-        const bool isOurs = (hwnd == impl->window);
+        const bool isOurs = (hwnd == impl->window.load());
         if (!isOurs && !IsSpotifyWindow(hwnd)) continue;
 
         if (event == EVENT_OBJECT_CREATE) {
@@ -137,7 +139,7 @@ void CALLBACK SpotifyClient::Impl::OnNameEvent(
     std::string utf8 = WideToUtf8(buf);
 
     for (auto* impl : SnapshotRegistry()) {
-        if (hwnd == impl->window) {
+        if (hwnd == impl->window.load()) {
             impl->self->OnRawTitle(utf8);
             impl->ApplyTitle(utf8);
         }
@@ -149,24 +151,25 @@ void CALLBACK SpotifyClient::Impl::OnNameEvent(
 // ------------------------------------------------------------------------
 
 void SpotifyClient::Impl::SetWindow(HWND hWnd) {
-    const bool wasOpen = (window != nullptr);
-    window = hWnd;
-    processId = 0;
-    if (window) {
-        ::GetWindowThreadProcessId(window, &processId);
+    const bool wasOpen = (window.load() != nullptr);
+    window.store(hWnd);
+    DWORD pid = 0;
+    if (hWnd) {
+        ::GetWindowThreadProcessId(hWnd, &pid);
     }
-    const bool nowOpen = (window != nullptr);
+    processId.store(pid);
+    const bool nowOpen = (hWnd != nullptr);
 
     if (!wasOpen && nowOpen) {
         hookTitle = ::SetWinEventHook(
             EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nullptr,
-            &Impl::OnNameEvent, processId, 0,
+            &Impl::OnNameEvent, pid, 0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
         self->OnOpened();
 
         wchar_t buf[256]{};
-        ::GetWindowTextW(window, buf, static_cast<int>(std::size(buf)) - 1);
+        ::GetWindowTextW(hWnd, buf, static_cast<int>(std::size(buf)) - 1);
         const std::string utf8 = WideToUtf8(buf);
         self->OnRawTitle(utf8);
         ApplyTitle(utf8);
@@ -191,6 +194,13 @@ void SpotifyClient::Impl::SetWindow(HWND hWnd) {
 void SpotifyClient::Impl::ApplySmtc(const PlaybackState& frag) {
     {
         std::lock_guard lock(fragMu);
+        // Anchor the smooth-position clock only on real SMTC deltas. Position
+        // or status edges mean SMTC has spoken — anything else (audio/title
+        // aggregation) will leave the anchor alone and keep extrapolating.
+        if (frag.position != smtcFrag.position ||
+            frag.status   != smtcFrag.status) {
+            smtcAnchor = std::chrono::steady_clock::now();
+        }
         smtcFrag = frag;
     }
     Aggregate();
@@ -230,37 +240,51 @@ void SpotifyClient::Impl::ResetFragments() {
 
 void SpotifyClient::Impl::Aggregate() {
     PlaybackState out;
+    std::chrono::steady_clock::time_point anchor;
     {
         std::lock_guard lock(fragMu);
-
-        const bool smtcHasContent =
-            !smtcFrag.title.empty() || !smtcFrag.artist.empty() ||
-            smtcFrag.status != PlaybackState::Status::Unknown;
-
-        if (smtcHasContent) {
-            out = smtcFrag;  // copies art bytes too
-        }
-
-        // Fallback/fill from title.
-        if (out.artist.empty() && !titleFrag.artist.empty()) out.artist = titleFrag.artist;
-        if (out.title.empty()  && !titleFrag.title.empty())  out.title  = titleFrag.title;
-        if (out.status == PlaybackState::Status::Unknown && titleFrag.any) {
-            out.status = titleFrag.status;
-        }
-        out.isAd = titleFrag.isAd;
-
-        // Audio layer.
-        out.appVolume = audioFrag.resolved ? audioFrag.vol : -1.0f;
-        out.appMuted  = audioFrag.muted;
-        out.audible   = audioFrag.audible;
+        out = FuseFragments(smtcFrag, audioFrag, titleFrag);
+        anchor = smtcAnchor;
     }
 
+    PlaybackState prev;
     {
         std::lock_guard lock(stateMu);
         if (latest == out) return;
+        prev = latest;
         latest = out;
+        latestAnchor = anchor;
     }
+
+    // Edge signals fire BEFORE OnStateChanged, so consumers wiring both don't
+    // have to filter OnStateChanged for "what actually changed."
+    if (IsTrackChange(prev, out)) self->OnTrackChanged(prev, out);
+    if (!prev.isAd &&  out.isAd) self->OnAdStarted();
+    if ( prev.isAd && !out.isAd) self->OnAdEnded();
+
     self->OnStateChanged(out);
+}
+
+void SpotifyClient::Impl::MaybeFirePositionTick() {
+    if (self->OnPositionChanged.size() == 0) return;
+
+    PlaybackState::Status status;
+    std::chrono::milliseconds position;
+    std::chrono::milliseconds duration;
+    std::chrono::steady_clock::time_point anchor;
+    {
+        std::lock_guard lock(stateMu);
+        status   = latest.status;
+        position = latest.position;
+        duration = latest.duration;
+        anchor   = latestAnchor;
+    }
+    if (status != PlaybackState::Status::Playing) return;
+
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - anchor);
+    self->OnPositionChanged(
+        ExtrapolatePosition(status, position, duration, elapsed));
 }
 
 // ------------------------------------------------------------------------
@@ -327,17 +351,36 @@ void SpotifyClient::Stop() {
 
     UnregisterImpl(m_.get());
 
-    m_->window = nullptr;
-    m_->processId = 0;
+    m_->window.store(nullptr);
+    m_->processId.store(0);
 }
 
 bool SpotifyClient::IsRunning() const {
-    return m_->window != nullptr;
+    return m_->window.load() != nullptr;
 }
 
 PlaybackState SpotifyClient::LatestState() const {
     std::lock_guard lock(m_->stateMu);
     return m_->latest;
+}
+
+std::chrono::milliseconds SpotifyClient::LatestPositionSmooth() const {
+    PlaybackState::Status status;
+    std::chrono::milliseconds position;
+    std::chrono::milliseconds duration;
+    std::chrono::steady_clock::time_point anchor;
+    {
+        std::lock_guard lock(m_->stateMu);
+        status   = m_->latest.status;
+        position = m_->latest.position;
+        duration = m_->latest.duration;
+        anchor   = m_->latestAnchor;
+    }
+    if (status != PlaybackState::Status::Playing) return position;
+
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - anchor);
+    return ExtrapolatePosition(status, position, duration, elapsed);
 }
 
 bool SpotifyClient::SendCommand(AppCommand cmd) {
@@ -352,22 +395,24 @@ bool SpotifyClient::SendCommand(AppCommand cmd) {
         APPCOMMAND_VOLUME_DOWN,
         APPCOMMAND_VOLUME_MUTE,
     };
-    if (!m_->window) return false;
+    const HWND hWnd = m_->window.load();
+    if (!hWnd) return false;
     const unsigned code = kTable[static_cast<unsigned>(cmd)];
-    return ::PostMessageW(m_->window, WM_APPCOMMAND, FAPPCOMMAND_KEY,
+    return ::PostMessageW(hWnd, WM_APPCOMMAND, FAPPCOMMAND_KEY,
                           MAKELONG(0, code)) != 0;
 }
 
 bool SpotifyClient::OpenUri(std::string_view spotifyUri) {
     const std::wstring wide = Utf8ToWide(spotifyUri);
-    HINSTANCE r = ::ShellExecuteW(m_->window, L"open", wide.c_str(),
+    HINSTANCE r = ::ShellExecuteW(m_->window.load(), L"open", wide.c_str(),
                                   nullptr, nullptr, SW_NORMAL);
     return reinterpret_cast<INT_PTR>(r) > 32;
 }
 
 bool SpotifyClient::SendKey(unsigned virtualKey) {
-    if (!m_->window) return false;
-    return ::PostMessageW(m_->window, WM_KEYDOWN,
+    const HWND hWnd = m_->window.load();
+    if (!hWnd) return false;
+    return ::PostMessageW(hWnd, WM_KEYDOWN,
                           static_cast<WPARAM>(virtualKey), 0) != 0;
 }
 

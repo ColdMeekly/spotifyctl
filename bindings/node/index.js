@@ -78,10 +78,14 @@ const PlaybackStateRaw = koffi.struct('spotifyctl_playback_state', {
   app_volume:     'float',
 });
 
-const StateCB  = koffi.proto('void StateCB(const spotifyctl_playback_state *state, void *user)');
-const BoolCB   = koffi.proto('void BoolCB(int value, void *user)');
-const StringCB = koffi.proto('void StringCB(const char *utf8, void *user)');
-const VoidCB   = koffi.proto('void VoidCB(void *user)');
+const StateCB   = koffi.proto('void StateCB(const spotifyctl_playback_state *state, void *user)');
+const BoolCB    = koffi.proto('void BoolCB(int value, void *user)');
+const StringCB  = koffi.proto('void StringCB(const char *utf8, void *user)');
+const VoidCB    = koffi.proto('void VoidCB(void *user)');
+const PositionCB = koffi.proto('void PositionCB(int64_t position_ms, void *user)');
+const TrackCB   = koffi.proto(
+  'void TrackCB(const spotifyctl_playback_state *prev, const spotifyctl_playback_state *curr, void *user)'
+);
 
 // ---------------------------------------------------------------------------
 // Function bindings
@@ -112,13 +116,19 @@ const fn = {
 
   latest_state:      lib.func('int spotifyctl_latest_state(void *c, _Out_ spotifyctl_playback_state *out)'),
   latest_state_json: lib.func('size_t spotifyctl_latest_state_json(void *c, _Out_ char *buf, size_t cap)'),
+  latest_position_smooth_ms: lib.func('int64_t spotifyctl_latest_position_smooth_ms(const void *c)'),
 
-  on_state_changed:  lib.func('size_t spotifyctl_on_state_changed(void *c, StateCB *cb, void *user)'),
-  on_audible_changed:lib.func('size_t spotifyctl_on_audible_changed(void *c, BoolCB *cb, void *user)'),
-  on_raw_title:      lib.func('size_t spotifyctl_on_raw_title(void *c, StringCB *cb, void *user)'),
-  on_opened:         lib.func('size_t spotifyctl_on_opened(void *c, VoidCB *cb, void *user)'),
-  on_closed:         lib.func('size_t spotifyctl_on_closed(void *c, VoidCB *cb, void *user)'),
-  disconnect:        lib.func('void spotifyctl_disconnect(void *c, size_t token)'),
+  on_state_changed:             lib.func('size_t spotifyctl_on_state_changed(void *c, StateCB *cb, void *user)'),
+  on_state_changed_with_replay: lib.func('size_t spotifyctl_on_state_changed_with_replay(void *c, StateCB *cb, void *user)'),
+  on_audible_changed:           lib.func('size_t spotifyctl_on_audible_changed(void *c, BoolCB *cb, void *user)'),
+  on_raw_title:                 lib.func('size_t spotifyctl_on_raw_title(void *c, StringCB *cb, void *user)'),
+  on_opened:                    lib.func('size_t spotifyctl_on_opened(void *c, VoidCB *cb, void *user)'),
+  on_closed:                    lib.func('size_t spotifyctl_on_closed(void *c, VoidCB *cb, void *user)'),
+  on_track_changed:             lib.func('size_t spotifyctl_on_track_changed(void *c, TrackCB *cb, void *user)'),
+  on_ad_started:                lib.func('size_t spotifyctl_on_ad_started(void *c, VoidCB *cb, void *user)'),
+  on_ad_ended:                  lib.func('size_t spotifyctl_on_ad_ended(void *c, VoidCB *cb, void *user)'),
+  on_position_changed:          lib.func('size_t spotifyctl_on_position_changed(void *c, PositionCB *cb, void *user)'),
+  disconnect:                   lib.func('void spotifyctl_disconnect(void *c, size_t token)'),
 
   // URI builders return heap char*; we need the raw pointer so we can free it.
   uri_track:         lib.func('void *spotifyctl_uri_track(const char *id)'),
@@ -258,6 +268,11 @@ class SpotifyClient extends EventEmitter {
     return buf.slice(0, nul === -1 ? need : nul).toString('utf8');
   }
 
+  get positionSmoothMs() {
+    this._require();
+    return Number(fn.latest_position_smooth_ms(this._handle));
+  }
+
   disconnect(token) {
     if (!this._handle) return;
     const t = typeof token === 'bigint' ? token : BigInt(token);
@@ -272,14 +287,17 @@ class SpotifyClient extends EventEmitter {
   // -- internals ---------------------------------------------------------
 
   _wire() {
-    // Pre-register all five event streams on start(); consumers use .on(...).
+    // Pre-register all event streams on start(); consumers use .on(...).
     this._subscribe(fn.on_opened,
       koffi.register((_user) => { try { this.emit('opened'); } catch {} }, koffi.pointer(VoidCB)));
 
     this._subscribe(fn.on_closed,
       koffi.register((_user) => { try { this.emit('closed'); } catch {} }, koffi.pointer(VoidCB)));
 
-    this._subscribe(fn.on_state_changed,
+    // Use the replay variant so late listeners receive the current state
+    // synchronously on first `.on('stateChanged', ...)` — matches what Node
+    // EventEmitter users naturally expect. Zero cost for non-listeners.
+    this._subscribe(fn.on_state_changed_with_replay,
       koffi.register((statePtr, _user) => {
         try {
           const raw = koffi.decode(statePtr, PlaybackStateRaw);
@@ -298,6 +316,26 @@ class SpotifyClient extends EventEmitter {
           this.emit('rawTitle', s);
         } catch {}
       }, koffi.pointer(StringCB)));
+
+    this._subscribe(fn.on_track_changed,
+      koffi.register((prevPtr, currPtr, _user) => {
+        try {
+          const prev = koffi.decode(prevPtr, PlaybackStateRaw);
+          const curr = koffi.decode(currPtr, PlaybackStateRaw);
+          this.emit('trackChanged', unpackState(prev), unpackState(curr));
+        } catch {}
+      }, koffi.pointer(TrackCB)));
+
+    this._subscribe(fn.on_ad_started,
+      koffi.register((_user) => { try { this.emit('adStarted'); } catch {} }, koffi.pointer(VoidCB)));
+
+    this._subscribe(fn.on_ad_ended,
+      koffi.register((_user) => { try { this.emit('adEnded'); } catch {} }, koffi.pointer(VoidCB)));
+
+    this._subscribe(fn.on_position_changed,
+      koffi.register((positionMs, _user) => {
+        try { this.emit('positionChanged', Number(positionMs)); } catch {}
+      }, koffi.pointer(PositionCB)));
   }
 
   _subscribe(registerFn, shimPtr) {

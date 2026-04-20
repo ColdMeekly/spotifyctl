@@ -3,6 +3,8 @@
 #include "spotify/events.h"
 
 #include <atomic>
+#include <chrono>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -65,6 +67,57 @@ TEST_CASE("slots are invoked on a stable snapshot", "[signal]") {
     sig();
     CHECK(hits == 2);
     CHECK(sig.size() == 1);
+}
+
+TEST_CASE("ConnectAndReplay invokes slot once synchronously", "[signal]") {
+    Signal<void(int)> sig;
+    std::vector<int> seen;
+    sig.ConnectAndReplay([&](int v) { seen.push_back(v); }, 42);
+
+    CHECK(seen == std::vector<int>{42});
+    CHECK(sig.size() == 1);
+
+    sig(7);
+    CHECK(seen == std::vector<int>{42, 7});
+}
+
+TEST_CASE("ConnectAndReplay is atomic vs concurrent emit", "[signal][thread]") {
+    // If a producer thread is emitting while we call ConnectAndReplay, the
+    // slot must either see the replay value first and then live emits, or
+    // be connected too late to see them — but never miss the replay or see
+    // emits before the replay value.
+    Signal<void(int)> sig;
+
+    std::atomic<bool> go{false};
+    std::atomic<bool> stop{false};
+    std::thread producer([&] {
+        while (!go.load()) { std::this_thread::yield(); }
+        int v = 1;
+        while (!stop.load()) sig(v++);
+    });
+
+    go.store(true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    std::vector<int> seen;
+    std::mutex seenMu;
+    sig.ConnectAndReplay(
+        [&](int v) {
+            std::lock_guard lk(seenMu);
+            seen.push_back(v);
+        },
+        -1);
+
+    // Let the producer spin for a bit more, then stop.
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    stop.store(true);
+    producer.join();
+
+    std::lock_guard lk(seenMu);
+    REQUIRE_FALSE(seen.empty());
+    CHECK(seen.front() == -1);
+    // Post-replay, everything else must be strictly positive (live emits).
+    for (std::size_t i = 1; i < seen.size(); ++i) CHECK(seen[i] > 0);
 }
 
 TEST_CASE("concurrent connect and emit is safe", "[signal][thread]") {

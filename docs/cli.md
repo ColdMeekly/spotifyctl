@@ -34,6 +34,21 @@ Subscribes to state changes and streams one line per delta until Ctrl-C.
 - Default: human-readable.
 - `--json`: newline-delimited JSON (NDJSON) — one object per line.
 
+### `events [--position]`
+
+Streams typed NDJSON edge events until Ctrl-C — one line per dedicated
+signal, so consumers can filter on `type` without diffing `watch` output:
+
+```json
+{"type":"track_changed","previous":{...},"current":{...}}
+{"type":"ad_started"}
+{"type":"ad_ended"}
+{"type":"position","position_ms":123456}   // with --position
+```
+
+`--position` opts in to the ~1 Hz position tick (off by default; the tick is
+only emitted while Spotify is playing).
+
 ### `play` · `pause` · `toggle` · `next` · `prev`
 
 Transport commands. Prefer SMTC, fall back to media keys. Exit 4 if the

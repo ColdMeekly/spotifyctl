@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-20
+
+### Added
+- `SpotifyClient::LatestPositionSmooth()` — playback position with monotonic-
+  clock extrapolation between SMTC updates. Replaces the per-caller boilerplate
+  in every "make the progress bar smooth" consumer. C ABI:
+  `spotifyctl_latest_position_smooth_ms`. Python: `client.position_smooth_ms`.
+  Node: `client.positionSmoothMs`.
+- Four new signals next to `OnStateChanged`:
+  - `OnTrackChanged(previous, current)` — fires when the `(artist, title,
+    album)` tuple changes, including empty→populated at startup.
+  - `OnAdStarted` / `OnAdEnded` — edges on the existing `isAd` flag.
+  - `OnPositionChanged` — ~1 Hz tick while `status == Playing` and at least
+    one slot is connected (zero cost when nobody subscribes).
+- `Signal::ConnectAndReplay(slot, replayArgs...)` — atomic subscribe + one
+  synchronous replay under the signal lock, so late subscribers don't race
+  against `LatestState()` and `Emit` cannot interleave.
+  - C ABI: `spotifyctl_on_state_changed_with_replay`.
+  - Python: `client.on_state_changed(cb, replay=True)`.
+  - Node: `stateChanged` listeners automatically get the current snapshot on
+    first attach — matches `EventEmitter` user expectations.
+- `spotifyctl events [--position]` CLI subcommand — typed NDJSON edge stream
+  (`track_changed`, `ad_started`, `ad_ended`, optional `position`). Additive
+  to `watch`, which is unchanged.
+- ASan build preset (`debug-asan`) and matching CI job — ctest under
+  `/fsanitize=address` on every push.
+
+### Changed
+- `PlaybackState::operator==` now compares album-art size plus a cached
+  64-bit hash instead of the raw bytes, turning the steady-state republish
+  short-circuit from a ~200 KB `memcmp` per SMTC tick into an 8-byte compare.
+  Collision probability is negligible (~10⁻¹⁹) and the only consequence
+  would be suppressing one `OnStateChanged` republish on art change — benign.
+- `examples/now_playing` now calls `LatestPositionSmooth()` directly. Fixes a
+  latent bug where the hand-rolled extrapolation re-anchored on any
+  `OnStateChanged`, snapping the counter backwards on unrelated field
+  updates (e.g. app-volume changes).
+
 ## [0.2.0] — 2026-04-20
 
 ### Added
@@ -41,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fusion, unified `PlaybackState`, transport controls, URI builders, Catch2
   test suite, `rickroll` and `now_playing` example programs.
 
-[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ColdMeekly/spotifyctl/releases/tag/v0.1.0

@@ -33,6 +33,10 @@ spotify.Stop();    // destructor calls Stop() too
 auto s = spotify.LatestState();       // snapshot at any time, any thread
 spotify.OnStateChanged.connect(       // stream
     [](const spotify::PlaybackState& s) { /* ... */ });
+
+auto pos = spotify.LatestPositionSmooth();   // position with steady_clock
+                                             // extrapolation between SMTC
+                                             // updates (while Playing)
 ```
 
 See the README's "Reading state" section for the full `PlaybackState`
@@ -69,8 +73,25 @@ block, and synchronize your own state if the slot touches shared data.
 | `OnOpened` | — | The Spotify window is detected. |
 | `OnClosed` | — | The Spotify window disappears. |
 | `OnStateChanged` | `const PlaybackState&` | Any field of `PlaybackState` changed. |
+| `OnTrackChanged` | `const PlaybackState& previous, current` | The `(artist, title, album)` tuple changed, including empty→populated at startup. |
+| `OnAdStarted` | — | `isAd` went false → true. |
+| `OnAdEnded` | — | `isAd` went true → false. |
 | `OnAudibleChanged` | `bool` | Audible ↔ silent transition (~1 s debounce). |
 | `OnRawTitle` | `const std::string&` | Window title changed. |
+| `OnPositionChanged` | `std::chrono::milliseconds` | ~1 Hz while `Playing` and at least one slot is connected. |
+
+### `ConnectAndReplay`
+
+Every `Signal<F>` also exposes `ConnectAndReplay(slot, replayArgs...)`. It
+atomically pushes the slot and invokes it once with caller-supplied arguments,
+under the signal's internal mutex, so the slot cannot miss a concurrent emit
+or see a duplicated one. Use this for late subscribers to state signals:
+
+```cpp
+auto tok = spotify.OnStateChanged.ConnectAndReplay(
+    [](const spotify::PlaybackState& s) { /* ... */ },
+    spotify.LatestState());
+```
 
 ## Consuming from CMake
 

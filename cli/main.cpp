@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -187,6 +188,113 @@ int CmdWatch(const std::vector<std::string_view>& args, const GlobalArgs& /*g*/)
     }
 
     spotifyctl_disconnect(c, tok);
+    spotifyctl_stop(c);
+    spotifyctl_free(c);
+    return kExitOk;
+}
+
+// ---------------------------------------------------------------------------
+// events — typed NDJSON stream per signal: track changes, ad edges, position
+// ticks. Additive to `watch`; callers who want the old per-field stream keep
+// using `watch`.
+// ---------------------------------------------------------------------------
+
+void EmitJsonLine(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    std::vprintf(fmt, ap);
+    va_end(ap);
+    std::fputc('\n', stdout);
+    std::fflush(stdout);
+}
+
+// Minimal NDJSON field-escaping for artist/title/album. The library's own
+// json_writer lives in src/ — we stay within the public ABI and inline this.
+std::string JsonEscape(const char* s) {
+    std::string out;
+    if (!s) return out;
+    for (const char* p = s; *p; ++p) {
+        unsigned char c = static_cast<unsigned char>(*p);
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
+    }
+    return out;
+}
+
+void EmitTrackObj(const char* key, const spotifyctl_playback_state* s) {
+    std::printf("\"%s\":{\"artist\":\"%s\",\"title\":\"%s\",\"album\":\"%s\",\"status\":\"%s\"}",
+                key,
+                JsonEscape(s->artist).c_str(),
+                JsonEscape(s->title).c_str(),
+                JsonEscape(s->album).c_str(),
+                StatusText(s->status));
+}
+
+void OnTrackChangedCb(const spotifyctl_playback_state* prev,
+                      const spotifyctl_playback_state* curr,
+                      void* /*user*/) {
+    std::printf("{\"type\":\"track_changed\",");
+    EmitTrackObj("previous", prev);
+    std::printf(",");
+    EmitTrackObj("current", curr);
+    std::printf("}\n");
+    std::fflush(stdout);
+}
+
+void OnAdStartedCb(void* /*user*/) { EmitJsonLine("{\"type\":\"ad_started\"}"); }
+void OnAdEndedCb(void* /*user*/)   { EmitJsonLine("{\"type\":\"ad_ended\"}"); }
+
+void OnPositionChangedCb(int64_t position_ms, void* /*user*/) {
+    EmitJsonLine("{\"type\":\"position\",\"position_ms\":%lld}",
+                 static_cast<long long>(position_ms));
+}
+
+int CmdEvents(const std::vector<std::string_view>& args, const GlobalArgs& /*g*/) {
+    bool want_position = false;
+    for (auto a : args) {
+        if (a == "--position") { want_position = true; continue; }
+        std::fprintf(stderr, "events: unknown argument: %.*s\n",
+                     static_cast<int>(a.size()), a.data());
+        return kExitUsage;
+    }
+
+    spotifyctl_client* c = spotifyctl_new();
+    if (!c) return kExitFailure;
+    spotifyctl_start(c);
+
+    std::signal(SIGINT, OnSigInt);
+
+    auto t1 = spotifyctl_on_track_changed(c, OnTrackChangedCb, c);
+    auto t2 = spotifyctl_on_ad_started  (c, OnAdStartedCb,    c);
+    auto t3 = spotifyctl_on_ad_ended    (c, OnAdEndedCb,      c);
+    spotifyctl_token t4 = 0;
+    if (want_position) {
+        t4 = spotifyctl_on_position_changed(c, OnPositionChangedCb, c);
+    }
+
+    while (!g_stop.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if (t4) spotifyctl_disconnect(c, t4);
+    spotifyctl_disconnect(c, t3);
+    spotifyctl_disconnect(c, t2);
+    spotifyctl_disconnect(c, t1);
     spotifyctl_stop(c);
     spotifyctl_free(c);
     return kExitOk;
@@ -428,6 +536,7 @@ void PrintUsage(FILE* out) {
         "  version                     print library version\n"
         "  now-playing [--json|--tsv]  print the current state\n"
         "  watch                       stream NDJSON state deltas until Ctrl-C\n"
+        "  events [--position]         stream typed NDJSON edge events until Ctrl-C\n"
         "  play | pause | toggle       transport\n"
         "  next | prev\n"
         "  seek TIME                   90, 90s, 500ms, 1:23, +30s, -15s\n"
@@ -482,6 +591,7 @@ int main(int argc, char** argv) {
     if (cmd == "version")     return CmdVersion();
     if (cmd == "now-playing") return CmdNowPlaying(rest, g);
     if (cmd == "watch")       return CmdWatch(rest, g);
+    if (cmd == "events")      return CmdEvents(rest, g);
     if (cmd == "play" || cmd == "pause" || cmd == "toggle" ||
         cmd == "next" || cmd == "prev") return CmdTransport(cmd, g);
     if (cmd == "seek")        return CmdSeek(rest, g);

@@ -1,6 +1,6 @@
 {
   "name": "libspotifyctl",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Offline control and observation of the Spotify desktop app on Windows (SMTC + Core Audio, no Web API).",
   "main": "index.js",
   "types": "types/index.d.ts",

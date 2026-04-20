@@ -52,13 +52,21 @@ values as the C ABI enums.
 
 Extends `EventEmitter`. Events:
 
-| Event            | Payload              |
-|------------------|----------------------|
-| `opened`         | —                    |
-| `closed`         | —                    |
-| `stateChanged`   | `PlaybackState`      |
-| `audibleChanged` | `boolean`            |
-| `rawTitle`       | `string`             |
+| Event             | Payload                                  |
+|-------------------|------------------------------------------|
+| `opened`          | —                                        |
+| `closed`          | —                                        |
+| `stateChanged`    | `PlaybackState`                          |
+| `trackChanged`    | `(previous: PlaybackState, current: PlaybackState)` |
+| `adStarted`       | —                                        |
+| `adEnded`         | —                                        |
+| `audibleChanged`  | `boolean`                                |
+| `rawTitle`        | `string`                                 |
+| `positionChanged` | `number` — ms, ~1 Hz while Playing       |
+
+`stateChanged` listeners automatically receive the current snapshot
+synchronously on first attach — matching `EventEmitter` conventions, so late
+subscribers don't need a separate `latestState()` call.
 
 Methods:
 
@@ -88,6 +96,7 @@ class SpotifyClient extends EventEmitter {
   // State.
   latestState(): PlaybackState;
   latestStateJson(): string;
+  readonly positionSmoothMs: number;   // monotonic-clock extrapolation
 
   // Low-level callback management. Events registered via .on() are preferred.
   disconnect(token: bigint | number): void;

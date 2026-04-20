@@ -104,30 +104,56 @@ float spotifyctl_get_peak_amplitude(const spotifyctl_client *c);
 ### State
 
 ```c
-int    spotifyctl_latest_state     (spotifyctl_client *c,
-                                    spotifyctl_playback_state *out);
-size_t spotifyctl_latest_state_json(spotifyctl_client *c,
-                                    char *buf, size_t cap);
+int     spotifyctl_latest_state              (spotifyctl_client *c,
+                                              spotifyctl_playback_state *out);
+size_t  spotifyctl_latest_state_json         (spotifyctl_client *c,
+                                              char *buf, size_t cap);
+int64_t spotifyctl_latest_position_smooth_ms (const spotifyctl_client *c);
 ```
 
 `spotifyctl_latest_state_json` behaves like `snprintf`: pass `(NULL, 0)` to
 get the required size, then allocate `size + 1`.
 
+`spotifyctl_latest_position_smooth_ms` returns the playback position in ms
+with monotonic-clock extrapolation between SMTC updates while the status is
+`PLAYING`. Returns 0 if `c == NULL`.
+
 ### Callbacks
 
 ```c
-typedef void (*spotifyctl_state_cb)  (const spotifyctl_playback_state*, void *user);
-typedef void (*spotifyctl_bool_cb)   (int value, void *user);
-typedef void (*spotifyctl_string_cb) (const char *utf8, void *user);
-typedef void (*spotifyctl_void_cb)   (void *user);
+typedef void (*spotifyctl_state_cb)         (const spotifyctl_playback_state*, void *user);
+typedef void (*spotifyctl_bool_cb)          (int value,        void *user);
+typedef void (*spotifyctl_string_cb)        (const char *utf8, void *user);
+typedef void (*spotifyctl_void_cb)          (void *user);
+typedef void (*spotifyctl_position_cb)      (int64_t position_ms, void *user);
+typedef void (*spotifyctl_track_changed_cb) (const spotifyctl_playback_state *previous,
+                                             const spotifyctl_playback_state *current,
+                                             void *user);
 
-spotifyctl_token spotifyctl_on_state_changed  (spotifyctl_client*, spotifyctl_state_cb,  void*);
-spotifyctl_token spotifyctl_on_audible_changed(spotifyctl_client*, spotifyctl_bool_cb,   void*);
-spotifyctl_token spotifyctl_on_raw_title      (spotifyctl_client*, spotifyctl_string_cb, void*);
-spotifyctl_token spotifyctl_on_opened         (spotifyctl_client*, spotifyctl_void_cb,   void*);
-spotifyctl_token spotifyctl_on_closed         (spotifyctl_client*, spotifyctl_void_cb,   void*);
-void             spotifyctl_disconnect        (spotifyctl_client*, spotifyctl_token);
+spotifyctl_token spotifyctl_on_state_changed             (spotifyctl_client*, spotifyctl_state_cb,         void*);
+spotifyctl_token spotifyctl_on_state_changed_with_replay (spotifyctl_client*, spotifyctl_state_cb,         void*);
+spotifyctl_token spotifyctl_on_audible_changed           (spotifyctl_client*, spotifyctl_bool_cb,          void*);
+spotifyctl_token spotifyctl_on_raw_title                 (spotifyctl_client*, spotifyctl_string_cb,        void*);
+spotifyctl_token spotifyctl_on_opened                    (spotifyctl_client*, spotifyctl_void_cb,          void*);
+spotifyctl_token spotifyctl_on_closed                    (spotifyctl_client*, spotifyctl_void_cb,          void*);
+spotifyctl_token spotifyctl_on_track_changed             (spotifyctl_client*, spotifyctl_track_changed_cb, void*);
+spotifyctl_token spotifyctl_on_ad_started                (spotifyctl_client*, spotifyctl_void_cb,          void*);
+spotifyctl_token spotifyctl_on_ad_ended                  (spotifyctl_client*, spotifyctl_void_cb,          void*);
+spotifyctl_token spotifyctl_on_position_changed          (spotifyctl_client*, spotifyctl_position_cb,      void*);
+void             spotifyctl_disconnect                   (spotifyctl_client*, spotifyctl_token);
 ```
+
+`spotifyctl_on_state_changed_with_replay` subscribes **and** invokes the
+callback once synchronously with the current state — under the signal lock,
+so a concurrent `Emit` on another thread cannot interleave. Use it when you
+need "current snapshot plus all future changes" without racing against
+`spotifyctl_latest_state`.
+
+`spotifyctl_on_position_changed` fires at ~1 Hz while `status == PLAYING` and
+at least one slot is connected. Cost is zero when nobody subscribes.
+
+All `on_*` functions return `0` on failure (e.g., `c == NULL` or allocation
+failure). The returned token is always non-zero for a successful subscribe.
 
 ### URI builders
 

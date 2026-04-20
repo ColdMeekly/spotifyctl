@@ -124,13 +124,6 @@ int main() {
     std::mutex artMu;
     std::vector<std::byte> artBuf;
     std::atomic<std::size_t> artBytes{0};
-    std::string lastArtKey;
-
-    // Cached position+timestamp so we can interpolate between SMTC updates for
-    // a smooth progress bar even though the underlying source is low-rate.
-    std::mutex posMu;
-    std::chrono::milliseconds posAtUpdate{0};
-    std::chrono::steady_clock::time_point posAtUpdateAt{};
 
     client.OnOpened.connect([&] { log.push("[spotify] window opened"); });
     client.OnClosed.connect([&] { log.push("[spotify] window closed"); });
@@ -141,24 +134,20 @@ int main() {
         log.push("[title] " + t);
     });
     client.OnStateChanged.connect([&](const spotify::PlaybackState& s) {
-        std::string key = s.artist + "\x1f" + s.title + "\x1f" + s.album;
         if (!s.albumArt.empty()) {
             std::lock_guard<std::mutex> lk(artMu);
             artBuf = s.albumArt;
             artBytes = s.albumArt.size();
         }
-        {
-            std::lock_guard<std::mutex> lk(posMu);
-            posAtUpdate   = s.position;
-            posAtUpdateAt = std::chrono::steady_clock::now();
-        }
-        if (key != lastArtKey) {
-            lastArtKey = key;
-            if (!s.title.empty()) {
-                log.push("[track] " + s.artist + " \xe2\x80\x94 " + s.title);
-            }
+    });
+    client.OnTrackChanged.connect([&](const spotify::PlaybackState& /*prev*/,
+                                      const spotify::PlaybackState& curr) {
+        if (!curr.title.empty()) {
+            log.push("[track] " + curr.artist + " \xe2\x80\x94 " + curr.title);
         }
     });
+    client.OnAdStarted.connect([&] { log.push("[ad] started"); });
+    client.OnAdEnded  .connect([&] { log.push("[ad] ended"); });
 
     client.Start();
     log.push("[app] started; press ? for help, Q to quit");
@@ -281,19 +270,7 @@ int main() {
         auto st = client.LatestState();
         float peak = client.GetPeakAmplitude();
 
-        // Extrapolate position between SMTC updates so the progress bar is
-        // smooth at the render rate rather than the SMTC event rate.
-        if (st.status == spotify::PlaybackState::Status::Playing) {
-            std::lock_guard<std::mutex> lk(posMu);
-            if (posAtUpdateAt.time_since_epoch().count() != 0) {
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - posAtUpdateAt);
-                auto extrapolated = posAtUpdate + elapsed;
-                if (st.duration.count() > 0 && extrapolated > st.duration)
-                    extrapolated = st.duration;
-                st.position = extrapolated;
-            }
-        }
+        st.position = client.LatestPositionSmooth();
 
         std::fputs("\x1b[H", stdout);
 

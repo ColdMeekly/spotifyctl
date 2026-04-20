@@ -138,8 +138,10 @@ Notes on individual fields:
   be Playing."
 - **`position` / `duration`** are delivered by SMTC events. Between events,
   `LatestState()` returns the last reported `position`; if you need a smooth
-  counter, extrapolate by wall-clock elapsed while `status == Playing`.
-  `now_playing` demonstrates this.
+  counter, call `spotify.LatestPositionSmooth()` — it extrapolates from the
+  last SMTC anchor via `steady_clock` while `status == Playing`, clamped to
+  `duration`. `now_playing` uses this directly. Subscribe to
+  `OnPositionChanged` for a ~1 Hz push stream of the same value.
 - **`albumArt`** is the raw bytes of SMTC's thumbnail stream, typically JPEG.
   Do not assume a container format.
 - **`canSeek` / `canSkipNext` / `canSkipPrev`** reflect SMTC's advertised
@@ -162,12 +164,26 @@ Notes on individual fields:
 | `OnOpened` | the Spotify window is detected | — |
 | `OnClosed` | the Spotify window goes away | — |
 | `OnStateChanged` | any `PlaybackState` field changes | `const PlaybackState&` |
+| `OnTrackChanged` | the `(artist, title, album)` tuple changes | `const PlaybackState& previous, current` |
+| `OnAdStarted` | `isAd` false → true | — |
+| `OnAdEnded` | `isAd` true → false | — |
 | `OnAudibleChanged` | audible/silent edge (debounced ~1 s) | `bool audible` |
 | `OnRawTitle` | the window title changes | `const std::string&` (UTF-8) |
+| `OnPositionChanged` | ~1 Hz while Playing & ≥1 slot connected | `std::chrono::milliseconds` |
 
 Every signal exposes `.connect(slot) -> Token` and `.disconnect(Token)`. The
 signal type is thread-safe; slots are invoked on a stable snapshot, so a slot
 may safely disconnect itself or another slot mid-emit.
+
+For late subscribers to `OnStateChanged`, use `ConnectAndReplay` to receive
+the current snapshot synchronously on connect — atomic with respect to any
+concurrent `Emit`, so no value is dropped or duplicated:
+
+```cpp
+auto tok = spotify.OnStateChanged.ConnectAndReplay(
+    [](const spotify::PlaybackState& s) { /* ... */ },
+    spotify.LatestState());
+```
 
 ---
 

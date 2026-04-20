@@ -12,6 +12,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -19,6 +20,8 @@
 #include "spotify/client.h"
 #include "spotify/playback.h"
 #include "spotify/title_parser.h"
+
+#include "aggregator.h"
 
 namespace spotify {
 
@@ -31,32 +34,30 @@ struct SpotifyClient::Impl {
     std::atomic<bool> hooksInstalled{false};
 
     // Current tracked Spotify main window. nullptr when Spotify isn't open.
-    HWND  window = nullptr;
-    DWORD processId = 0;
+    // Atomic so readers on user / audio-poll threads don't race with writes
+    // performed on the WinEvent dispatcher thread (SetWindow / Stop).
+    std::atomic<HWND>  window{nullptr};
+    std::atomic<DWORD> processId{0};
 
     HWINEVENTHOOK hookWindow = nullptr;
     HWINEVENTHOOK hookTitle  = nullptr;
 
     mutable std::mutex stateMu;
     PlaybackState latest;  // published unified state
+    // Anchor captured at the moment `latest.position` was valid in real time
+    // (i.e., the last SMTC position delta). Extrapolation is:
+    //     latest.position + (steady_clock::now() - latestAnchor)
+    std::chrono::steady_clock::time_point latestAnchor{};
 
     // Per-source fragments. Aggregator merges these into `latest`.
     mutable std::mutex fragMu;
     PlaybackState smtcFrag;   // artist/title/album/position/duration/art/status/caps
-    struct {
-        float vol = -1.0f;
-        bool  muted = false;
-        bool  audible = false;
-        bool  resolved = false;
-    } audioFrag;
-    struct {
-        bool idle = false;
-        bool isAd = false;
-        std::string artist;
-        std::string title;
-        PlaybackState::Status status = PlaybackState::Status::Unknown;
-        bool any = false;  // has ApplyTitle ever been called?
-    } titleFrag;
+    // Real-time anchor for `smtcFrag.position`. Updated only when SMTC
+    // reports a position or status change — leaving audio/title-only
+    // republishes out of the loop so the anchor stays honest.
+    std::chrono::steady_clock::time_point smtcAnchor{};
+    AudioFrag     audioFrag;
+    TitleFrag     titleFrag;
 
     std::unique_ptr<SmtcSource>   smtc;
     std::unique_ptr<AudioSession> audio;
@@ -77,6 +78,10 @@ struct SpotifyClient::Impl {
 
     // Merges fragments → latest, publishes via OnStateChanged when changed.
     void Aggregate();
+
+    // Called by the audio-session worker on its 1 Hz tick. Cheap no-op when
+    // nobody is subscribed to OnPositionChanged.
+    void MaybeFirePositionTick();
 
     static void CALLBACK OnWindowEvent(HWINEVENTHOOK, DWORD event, HWND hwnd,
                                        LONG idObject, LONG idChild,

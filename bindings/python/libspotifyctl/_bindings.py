@@ -74,10 +74,17 @@ class PlaybackStateRaw(Structure):
 # Callback types
 # ---------------------------------------------------------------------------
 
-StateCB  = CFUNCTYPE(None, POINTER(PlaybackStateRaw), c_void_p)
-BoolCB   = CFUNCTYPE(None, c_int,                     c_void_p)
-StringCB = CFUNCTYPE(None, c_char_p,                  c_void_p)
-VoidCB   = CFUNCTYPE(None,                            c_void_p)
+StateCB        = CFUNCTYPE(None, POINTER(PlaybackStateRaw), c_void_p)
+BoolCB         = CFUNCTYPE(None, c_int,                     c_void_p)
+StringCB       = CFUNCTYPE(None, c_char_p,                  c_void_p)
+VoidCB         = CFUNCTYPE(None,                            c_void_p)
+PositionCB     = CFUNCTYPE(None, c_int64,                   c_void_p)
+TrackChangedCB = CFUNCTYPE(
+    None,
+    POINTER(PlaybackStateRaw),  # previous
+    POINTER(PlaybackStateRaw),  # current
+    c_void_p,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -115,16 +122,22 @@ _bind("spotifyctl_set_app_muted",     c_int,   [c_void_p, c_int])
 _bind("spotifyctl_get_peak_amplitude", c_float, [c_void_p])
 
 # State
-_bind("spotifyctl_latest_state",      c_int,    [c_void_p, POINTER(PlaybackStateRaw)])
-_bind("spotifyctl_latest_state_json", c_size_t, [c_void_p, c_char_p, c_size_t])
+_bind("spotifyctl_latest_state",             c_int,    [c_void_p, POINTER(PlaybackStateRaw)])
+_bind("spotifyctl_latest_state_json",        c_size_t, [c_void_p, c_char_p, c_size_t])
+_bind("spotifyctl_latest_position_smooth_ms", c_int64, [c_void_p])
 
 # Callbacks
-_bind("spotifyctl_on_state_changed",   c_size_t, [c_void_p, StateCB,  c_void_p])
-_bind("spotifyctl_on_audible_changed", c_size_t, [c_void_p, BoolCB,   c_void_p])
-_bind("spotifyctl_on_raw_title",       c_size_t, [c_void_p, StringCB, c_void_p])
-_bind("spotifyctl_on_opened",          c_size_t, [c_void_p, VoidCB,   c_void_p])
-_bind("spotifyctl_on_closed",          c_size_t, [c_void_p, VoidCB,   c_void_p])
-_bind("spotifyctl_disconnect",         None,     [c_void_p, c_size_t])
+_bind("spotifyctl_on_state_changed",             c_size_t, [c_void_p, StateCB,        c_void_p])
+_bind("spotifyctl_on_state_changed_with_replay", c_size_t, [c_void_p, StateCB,        c_void_p])
+_bind("spotifyctl_on_audible_changed",           c_size_t, [c_void_p, BoolCB,         c_void_p])
+_bind("spotifyctl_on_raw_title",                 c_size_t, [c_void_p, StringCB,       c_void_p])
+_bind("spotifyctl_on_opened",                    c_size_t, [c_void_p, VoidCB,         c_void_p])
+_bind("spotifyctl_on_closed",                    c_size_t, [c_void_p, VoidCB,         c_void_p])
+_bind("spotifyctl_on_track_changed",             c_size_t, [c_void_p, TrackChangedCB, c_void_p])
+_bind("spotifyctl_on_ad_started",                c_size_t, [c_void_p, VoidCB,         c_void_p])
+_bind("spotifyctl_on_ad_ended",                  c_size_t, [c_void_p, VoidCB,         c_void_p])
+_bind("spotifyctl_on_position_changed",          c_size_t, [c_void_p, PositionCB,     c_void_p])
+_bind("spotifyctl_disconnect",                   None,     [c_void_p, c_size_t])
 
 # URI builders — return opaque char* that must be freed. Use c_void_p so
 # ctypes does NOT auto-convert to Python bytes (we'd lose the pointer).

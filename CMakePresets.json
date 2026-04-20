@@ -18,6 +18,12 @@
             "displayName": "Debug (static)"
         },
         {
+            "name": "debug-asan",
+            "inherits": "debug",
+            "displayName": "Debug + AddressSanitizer",
+            "cacheVariables": { "LIBSPOTIFYCTL_ENABLE_ASAN": "ON" }
+        },
+        {
             "name": "release",
             "inherits": "base",
             "displayName": "Release (static)"
@@ -39,12 +45,14 @@
     ],
     "buildPresets": [
         { "name": "debug",           "configurePreset": "debug",           "configuration": "Debug"   },
+        { "name": "debug-asan",      "configurePreset": "debug-asan",      "configuration": "Debug"   },
         { "name": "release",         "configurePreset": "release",         "configuration": "Release" },
         { "name": "release-shared",  "configurePreset": "release-shared",  "configuration": "Release" },
         { "name": "release-install", "configurePreset": "release-install", "configuration": "Release", "targets": ["install"] }
     ],
     "testPresets": [
-        { "name": "debug",   "configurePreset": "debug",   "configuration": "Debug",   "output": { "outputOnFailure": true } },
-        { "name": "release", "configurePreset": "release", "configuration": "Release", "output": { "outputOnFailure": true } }
+        { "name": "debug",      "configurePreset": "debug",      "configuration": "Debug",   "output": { "outputOnFailure": true } },
+        { "name": "debug-asan", "configurePreset": "debug-asan", "configuration": "Debug",   "output": { "outputOnFailure": true } },
+        { "name": "release",    "configurePreset": "release",    "configuration": "Release", "output": { "outputOnFailure": true } }
     ]
 }

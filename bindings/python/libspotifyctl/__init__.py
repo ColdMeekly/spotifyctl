@@ -232,16 +232,37 @@ class SpotifyClient:
         _b.lib.spotifyctl_latest_state_json(self._handle, buf, need + 1)
         return buf.value.decode("utf-8")
 
+    @property
+    def position_smooth_ms(self) -> int:
+        """Current position with monotonic-clock extrapolation while Playing."""
+        self._require()
+        return int(_b.lib.spotifyctl_latest_position_smooth_ms(self._handle))
+
     # -- callbacks -------------------------------------------------------
 
-    def on_state_changed(self, callback: Callable[[PlaybackState], None]) -> int:
+    def on_state_changed(
+        self,
+        callback: Callable[[PlaybackState], None],
+        *,
+        replay: bool = False,
+    ) -> int:
+        """Subscribe to unified state changes.
+
+        When ``replay=True``, ``callback`` is invoked once synchronously with
+        the current state before returning — atomically with the subscribe, so
+        no live emit from another thread can be dropped or duplicated.
+        """
         @_b.StateCB
         def _shim(state_ptr, _user):
             try:
                 callback(_unpack(state_ptr.contents))
             except Exception:
                 pass  # never propagate Python exceptions across the ABI
-        return self._register(_b.lib.spotifyctl_on_state_changed, _shim, callback)
+        fn = (
+            _b.lib.spotifyctl_on_state_changed_with_replay if replay
+            else _b.lib.spotifyctl_on_state_changed
+        )
+        return self._register(fn, _shim, callback)
 
     def on_audible_changed(self, callback: Callable[[bool], None]) -> int:
         @_b.BoolCB
@@ -278,6 +299,55 @@ class SpotifyClient:
             except Exception:
                 pass
         return self._register(_b.lib.spotifyctl_on_closed, _shim, callback)
+
+    def on_track_changed(
+        self,
+        callback: Callable[[PlaybackState, PlaybackState], None],
+    ) -> int:
+        """Fires when the (artist, title, album) tuple changes.
+
+        The callback receives (previous, current) as :class:`PlaybackState`
+        instances, including empty->populated transitions at startup.
+        """
+        @_b.TrackChangedCB
+        def _shim(prev_ptr, curr_ptr, _user):
+            try:
+                callback(_unpack(prev_ptr.contents), _unpack(curr_ptr.contents))
+            except Exception:
+                pass
+        return self._register(_b.lib.spotifyctl_on_track_changed, _shim, callback)
+
+    def on_ad_started(self, callback: Callable[[], None]) -> int:
+        @_b.VoidCB
+        def _shim(_user):
+            try:
+                callback()
+            except Exception:
+                pass
+        return self._register(_b.lib.spotifyctl_on_ad_started, _shim, callback)
+
+    def on_ad_ended(self, callback: Callable[[], None]) -> int:
+        @_b.VoidCB
+        def _shim(_user):
+            try:
+                callback()
+            except Exception:
+                pass
+        return self._register(_b.lib.spotifyctl_on_ad_ended, _shim, callback)
+
+    def on_position_changed(self, callback: Callable[[int], None]) -> int:
+        """Fires at ~1 Hz while Playing AND at least one slot is connected.
+
+        Delivers the extrapolated position in milliseconds; the same value as
+        :attr:`position_smooth_ms` would return at that instant.
+        """
+        @_b.PositionCB
+        def _shim(position_ms, _user):
+            try:
+                callback(int(position_ms))
+            except Exception:
+                pass
+        return self._register(_b.lib.spotifyctl_on_position_changed, _shim, callback)
 
     def disconnect(self, token: int) -> None:
         if not self._handle:

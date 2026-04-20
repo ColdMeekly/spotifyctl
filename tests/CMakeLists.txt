@@ -15,12 +15,20 @@ add_executable(libspotifyctl_tests
     test_signal.cpp
     test_uri_builders.cpp
     test_c_api.cpp
+    test_json_writer.cpp
+    test_aggregator.cpp
+    test_position.cpp
 )
 
 target_link_libraries(libspotifyctl_tests PRIVATE
     spotifyctl
     Catch2::Catch2WithMain
 )
+
+# Tests exercise a couple of internal helpers (json_writer) that live under
+# src/ and are not installed as public headers.
+target_include_directories(libspotifyctl_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
 
 if(MSVC)
     target_compile_definitions(libspotifyctl_tests PRIVATE

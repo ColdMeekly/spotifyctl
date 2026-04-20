@@ -87,9 +87,16 @@ class SpotifyClient:
     # State.
     def latest_state(self) -> PlaybackState: ...
     def latest_state_json(self) -> str: ...
+    position_smooth_ms: int          # read-only property — monotonic-clock
+                                     # extrapolation between SMTC updates
 
     # Callbacks — all return an int token, pass to disconnect().
-    def on_state_changed  (self, cb: Callable[[PlaybackState], None]) -> int: ...
+    def on_state_changed  (self, cb: Callable[[PlaybackState], None], *,
+                           replay: bool = False)                       -> int: ...
+    def on_track_changed  (self, cb: Callable[[PlaybackState, PlaybackState], None]) -> int: ...
+    def on_ad_started     (self, cb: Callable[[], None])              -> int: ...
+    def on_ad_ended       (self, cb: Callable[[], None])              -> int: ...
+    def on_position_changed(self, cb: Callable[[int], None])          -> int: ...
     def on_audible_changed(self, cb: Callable[[bool], None])          -> int: ...
     def on_raw_title      (self, cb: Callable[[str], None])           -> int: ...
     def on_opened         (self, cb: Callable[[], None])              -> int: ...
@@ -99,6 +106,33 @@ class SpotifyClient:
 
 Callbacks fire on Windows-owned background threads. Exceptions raised inside
 a callback are swallowed (they cannot propagate across the C ABI).
+
+### Late subscribers to `on_state_changed`
+
+Pass `replay=True` to receive the current snapshot synchronously on subscribe,
+atomically with the connect — no race against `latest_state()`:
+
+```python
+c.on_state_changed(print_state, replay=True)
+```
+
+### Track & ad edges
+
+```python
+def on_track(prev, curr):
+    print(f"now: {curr.artist} — {curr.title}")
+
+c.on_track_changed(on_track)    # fires on any (artist, title, album) change
+c.on_ad_started(lambda: print("ad"))
+c.on_ad_ended  (lambda: print("music's back"))
+```
+
+### Smooth position
+
+```python
+c.on_position_changed(lambda ms: print(f"{ms / 1000:.1f}s"))   # ~1 Hz while Playing
+print(c.position_smooth_ms)                                    # pull instead of push
+```
 
 ## URI builders
 

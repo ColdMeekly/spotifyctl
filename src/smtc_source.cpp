@@ -201,6 +201,7 @@ void SmtcSource::Priv::RefreshAll() {
             next.artist = HStringToUtf8(props.Artist());
             next.album  = HStringToUtf8(props.AlbumTitle());
             next.albumArt = ReadStreamBytes(props.Thumbnail());
+            next.RecomputeAlbumArtHash();
         }
     } catch (...) {}
 

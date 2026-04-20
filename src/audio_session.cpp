@@ -62,6 +62,9 @@ struct AudioSession::Priv {
     std::atomic<float> lastPeak{-1.0f};
     bool audibleState = false;
     int  belowCount = 0;
+    // Counter for the 1 Hz position tick piggybacking on the 50 ms poll.
+    // 20 iterations × 50 ms ≈ 1 s.
+    int  positionTick = 0;
 
     void Worker();
     bool Resolve(DWORD pid);
@@ -101,7 +104,7 @@ bool AudioSession::Priv::Resolve(DWORD pid) {
     if (FAILED(mgr->GetSessionEnumerator(senum.ptr()))) return false;
 
     int count = 0;
-    senum->GetCount(&count);
+    if (FAILED(senum->GetCount(&count))) return false;
     for (int i = 0; i < count; ++i) {
         ComPtr<IAudioSessionControl> ctrl;
         if (FAILED(senum->GetSession(i, ctrl.ptr()))) continue;
@@ -140,7 +143,7 @@ void AudioSession::Priv::Worker() {
     auto lastResolveAttempt = clock::time_point{};
 
     while (running.load()) {
-        const DWORD pid = impl->processId;
+        const DWORD pid = impl->processId.load();
 
         bool need;
         {
@@ -167,8 +170,7 @@ void AudioSession::Priv::Worker() {
                 float v = 0.0f;
                 if (SUCCEEDED(volume->GetMasterVolume(&v))) vol = v;
                 BOOL m = FALSE;
-                volume->GetMute(&m);
-                muted = m == TRUE;
+                if (SUCCEEDED(volume->GetMute(&m))) muted = m == TRUE;
             }
             if (meter) {
                 float p = 0.0f;
@@ -195,6 +197,11 @@ void AudioSession::Priv::Worker() {
 
         impl->ApplyAudio(vol, muted, newAudible, haveSession);
         if (edge) impl->self->OnAudibleChanged(newAudible);
+
+        if (++positionTick >= 20) {
+            positionTick = 0;
+            impl->MaybeFirePositionTick();
+        }
 
         std::unique_lock<std::mutex> lk(cvMu);
         cv.wait_for(lk, std::chrono::milliseconds(50),
@@ -252,8 +259,7 @@ bool AudioSession::IsMuted() const {
     std::lock_guard lock(p_->sessionMu);
     if (!p_->volume) return false;
     BOOL m = FALSE;
-    p_->volume->GetMute(&m);
-    return m == TRUE;
+    return SUCCEEDED(p_->volume->GetMute(&m)) && m == TRUE;
 }
 
 bool AudioSession::SetMuted(bool muted) {

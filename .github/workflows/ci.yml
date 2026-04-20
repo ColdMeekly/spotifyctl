@@ -118,6 +118,30 @@ jobs:
           path: install-shared/bin/libspotifyctl.dll
 
   # ------------------------------------------------------------------------
+  # AddressSanitizer: Debug build with /fsanitize=address runs the test suite.
+  # Catches heap/stack/use-after-free regressions that release tests miss.
+  # ------------------------------------------------------------------------
+  asan:
+    name: CMake debug + AddressSanitizer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure (debug-asan preset)
+        run: cmake --preset debug-asan
+
+      - name: Build
+        run: cmake --build --preset debug-asan
+
+      - name: Test under ASan
+        run: ctest --preset debug-asan
+
+  # ------------------------------------------------------------------------
   # MSBuild path: sanity-check the VS solution.
   # ------------------------------------------------------------------------
   msbuild:

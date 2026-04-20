@@ -34,6 +34,20 @@ class Signal<void(Args...)> {
         return t;
     }
 
+    // Connects a slot and synchronously replays it once with the supplied
+    // arguments, all under the signal's internal lock. This guarantees the new
+    // slot sees at least one value and cannot interleave with a concurrent
+    // emit — consumers that need "current + all future" updates no longer
+    // have to race connect() against a manual Latest*() call.
+    template <typename... ReplayArgs>
+    Token ConnectAndReplay(Slot slot, ReplayArgs&&... replayArgs) {
+        std::lock_guard<std::mutex> lock(mu_);
+        Token t = ++next_;
+        slots_.emplace_back(t, slot);
+        slot(std::forward<ReplayArgs>(replayArgs)...);
+        return t;
+    }
+
     void disconnect(Token t) {
         std::lock_guard<std::mutex> lock(mu_);
         slots_.erase(

@@ -49,8 +49,29 @@ class SpotifyClient {
     Signal<void(const PlaybackState&)>   OnStateChanged;    // unified state
     Signal<void(bool /*audible*/)>       OnAudibleChanged;  // audio output edge
 
+    // Track-edge signals. OnTrackChanged fires whenever the (artist, title,
+    // album) tuple changes, including empty→populated at startup. OnAdStarted /
+    // OnAdEnded fire on the isAd flag flipping false→true / true→false. All
+    // three fire on the same Windows background thread as OnStateChanged and
+    // are always fired BEFORE the matching OnStateChanged emission.
+    Signal<void(const PlaybackState& /*previous*/,
+                const PlaybackState& /*current*/)> OnTrackChanged;
+    Signal<void()>                                 OnAdStarted;
+    Signal<void()>                                 OnAdEnded;
+
+    // Ticks ~1 Hz while playback is Playing AND at least one slot is
+    // connected. Payload is the smooth position (same value as
+    // LatestPositionSmooth()). Zero cost when nobody is listening.
+    Signal<void(std::chrono::milliseconds)>        OnPositionChanged;
+
     // Snapshot of the latest unified state.
     PlaybackState LatestState() const;
+
+    // Current position with monotonic-clock-based extrapolation applied when
+    // playback is Playing. When Paused/Stopped, returns the raw anchor
+    // position. Consumers building progress bars should poll this rather than
+    // reimplement `position + (now - anchor)` on top of OnStateChanged.
+    std::chrono::milliseconds LatestPositionSmooth() const;
 
     // ---- Controls -----------------------------------------------------
     // All return false if Spotify is not currently running or the channel

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 project(libspotifyctl
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Offline (no Web API) library for reading from and controlling Spotify on Windows"
     HOMEPAGE_URL "https://github.com/ColdMeekly/spotifyctl"
     LANGUAGES C CXX)
@@ -17,6 +17,25 @@ endif()
 
 # Default to STATIC unless the caller asks for SHARED explicitly.
 option(BUILD_SHARED_LIBS "Build libspotifyctl as a DLL (otherwise STATIC)" OFF)
+
+# --------------------------------------------------------------------------
+# AddressSanitizer (MSVC /fsanitize=address). Intended for CI / local bug
+# hunts, not for shipping artifacts. Incompatible with /RTC1 so we strip
+# those flags from the Debug configuration when ASan is on.
+# --------------------------------------------------------------------------
+option(LIBSPOTIFYCTL_ENABLE_ASAN "Enable AddressSanitizer (MSVC /fsanitize=address)" OFF)
+if(LIBSPOTIFYCTL_ENABLE_ASAN)
+    if(NOT MSVC)
+        message(FATAL_ERROR "LIBSPOTIFYCTL_ENABLE_ASAN currently only supports MSVC.")
+    endif()
+    foreach(_cfg CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG
+                 CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        string(REGEX REPLACE "/RTC[^ ]*" "" ${_cfg} "${${_cfg}}")
+    endforeach()
+    add_compile_options(/fsanitize=address /Zi)
+    # Debug info helps ASan symbolize stack traces.
+    add_link_options(/DEBUG)
+endif()
 
 include(GNUInstallDirs)
 include(GenerateExportHeader)

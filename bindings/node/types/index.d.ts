@@ -49,9 +49,23 @@ export interface PlaybackState {
 export interface SpotifyClientEvents {
   opened: () => void;
   closed: () => void;
+  /**
+   * Emitted on every unified-state change. Also emitted synchronously once
+   * on the first attach of any listener after `start()`, carrying the client's
+   * current snapshot — so late subscribers don't need to race against
+   * `latestState()`.
+   */
   stateChanged: (state: PlaybackState) => void;
   audibleChanged: (audible: boolean) => void;
   rawTitle: (title: string) => void;
+  /** Emitted when the (artist, title, album) tuple changes. */
+  trackChanged: (previous: PlaybackState, current: PlaybackState) => void;
+  /** Emitted on `isAd` false→true. */
+  adStarted: () => void;
+  /** Emitted on `isAd` true→false. */
+  adEnded: () => void;
+  /** ~1 Hz while Playing AND at least one listener is attached. */
+  positionChanged: (positionMs: number) => void;
 }
 
 export declare class SpotifyClient extends EventEmitter {
@@ -78,6 +92,9 @@ export declare class SpotifyClient extends EventEmitter {
 
   latestState(): PlaybackState;
   latestStateJson(): string;
+
+  /** Current position with monotonic-clock extrapolation while Playing. */
+  readonly positionSmoothMs: number;
 
   disconnect(token: bigint | number): void;
 
