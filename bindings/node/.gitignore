@@ -1,0 +1,7 @@
+# Build artifacts
+node_modules/
+*.tgz
+
+# The DLL is staged by CI (or by the developer via cmake --install) before
+# `npm pack`. Never commit it.
+prebuilt/libspotifyctl.dll

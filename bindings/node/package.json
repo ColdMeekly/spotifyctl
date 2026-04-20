@@ -1,0 +1,47 @@
+{
+  "name": "libspotifyctl",
+  "version": "0.2.0",
+  "description": "Offline control and observation of the Spotify desktop app on Windows (SMTC + Core Audio, no Web API).",
+  "main": "index.js",
+  "types": "types/index.d.ts",
+  "files": [
+    "index.js",
+    "types/index.d.ts",
+    "prebuilt/libspotifyctl.dll",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "spotify",
+    "smtc",
+    "media",
+    "now-playing",
+    "windows",
+    "ffi"
+  ],
+  "author": "ColdMeekly",
+  "license": "MIT",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "koffi": "^2.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ColdMeekly/spotifyctl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ColdMeekly/spotifyctl/issues"
+  },
+  "homepage": "https://github.com/ColdMeekly/spotifyctl#readme"
+}

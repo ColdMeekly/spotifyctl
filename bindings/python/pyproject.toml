@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libspotifyctl"
+version = "0.2.0"
+description = "Offline (no Web API) library for reading from and controlling Spotify on Windows"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "ColdMeekly" }]
+keywords = ["spotify", "windows", "smtc", "audio", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+[project.urls]
+Homepage = "https://github.com/ColdMeekly/spotifyctl"
+Issues = "https://github.com/ColdMeekly/spotifyctl/issues"
+Source = "https://github.com/ColdMeekly/spotifyctl"
+
+[tool.setuptools]
+packages = ["libspotifyctl"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+libspotifyctl = ["_prebuilt/libspotifyctl.dll", "py.typed"]

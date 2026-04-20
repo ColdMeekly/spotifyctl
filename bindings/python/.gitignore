@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.whl
+
+# The DLL is staged by CI (or by the developer via cmake --install) before
+# `python -m build`. Never commit it.
+libspotifyctl/_prebuilt/libspotifyctl.dll
+
+# pytest
+.pytest_cache/
+__pycache__/
+*.pyc
