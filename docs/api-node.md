@@ -117,8 +117,13 @@ c.openUri(uriSearch('dark side of the moon'));
 
 ## Development
 
-Point the loader at an out-of-tree DLL with `LIBSPOTIFYCTL_DLL`:
+Build the C++ DLL, copy it into the binding's `prebuilt/` directory, then run:
 
 ```sh
-LIBSPOTIFYCTL_DLL=build\release-shared\Release\libspotifyctl.dll node examples/now_playing.js
+cmake --build --preset release-shared
+cp build/release-shared/Release/libspotifyctl.dll bindings/node/prebuilt/
+cd bindings/node && npm install && node --test test/
 ```
+
+The `prebuilt/` directory is gitignored, so a freshly built DLL never lands
+in commits.

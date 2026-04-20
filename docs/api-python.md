@@ -155,8 +155,15 @@ with SpotifyClient() as c:
 
 ## Development
 
-Point the loader at an out-of-tree DLL during development:
+Build the C++ DLL, copy it into the binding's `_prebuilt/` directory, then
+install the binding in editable mode:
 
 ```sh
-LIBSPOTIFYCTL_DLL=build\release-shared\Release\libspotifyctl.dll python -m pytest
+cmake --build --preset release-shared
+cp build/release-shared/Release/libspotifyctl.dll bindings/python/libspotifyctl/_prebuilt/
+pip install -e bindings/python
+python -m pytest bindings/python
 ```
+
+The `_prebuilt/` directory is gitignored, so a freshly built DLL never lands
+in commits.

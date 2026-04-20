@@ -34,7 +34,7 @@ cmake --build --preset release-shared
 
 ```sh
 cd bindings/python
-# Copy a freshly built DLL into the prebuilt dir (or set LIBSPOTIFYCTL_DLL).
+# Copy a freshly built DLL into the prebuilt dir (gitignored).
 cp ../../build/release-shared/Release/libspotifyctl.dll libspotifyctl/_prebuilt/
 pip install -e .
 pytest

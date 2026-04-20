@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import os
 import sys
 from ctypes import (
     CFUNCTYPE,
@@ -27,19 +26,11 @@ if sys.platform != "win32":
 def _find_dll() -> Path:
     here = Path(__file__).resolve().parent
     bundled = here / "_prebuilt" / "libspotifyctl.dll"
-    if bundled.exists():
-        return bundled
-    # Fallback: honour LIBSPOTIFYCTL_DLL for local dev against a CMake build dir.
-    override = os.environ.get("LIBSPOTIFYCTL_DLL")
-    if override:
-        p = Path(override)
-        if p.exists():
-            return p
-        raise FileNotFoundError(f"LIBSPOTIFYCTL_DLL points at {p} but it does not exist")
-    raise FileNotFoundError(
-        f"Bundled libspotifyctl.dll not found at {bundled}. "
-        f"Either reinstall the wheel or set LIBSPOTIFYCTL_DLL to a DLL path."
-    )
+    if not bundled.exists():
+        raise FileNotFoundError(
+            f"Bundled libspotifyctl.dll not found at {bundled}. Reinstall the wheel."
+        )
+    return bundled
 
 
 _DLL_PATH = _find_dll()

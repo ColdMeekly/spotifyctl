@@ -4,25 +4,25 @@
  * libspotifyctl — Node.js bindings.
  *
  * Wraps the C ABI in `libspotifyctl.dll` via koffi. The DLL is bundled under
- * `prebuilt/` for win32-x64. Set LIBSPOTIFYCTL_DLL to override the load path
- * (useful during local development against a CMake build tree).
+ * `prebuilt/` for win32-x64.
  */
 
 const koffi = require('koffi');
 const path = require('path');
+const fs = require('fs');
 const { EventEmitter } = require('events');
 
 // ---------------------------------------------------------------------------
 // DLL load
 // ---------------------------------------------------------------------------
 
-function resolveDllPath() {
-  const override = process.env.LIBSPOTIFYCTL_DLL;
-  if (override) return override;
-  return path.join(__dirname, 'prebuilt', 'libspotifyctl.dll');
+const dllPath = path.join(__dirname, 'prebuilt', 'libspotifyctl.dll');
+if (!fs.existsSync(dllPath)) {
+  throw new Error(
+    `Bundled libspotifyctl.dll not found at ${dllPath}. Reinstall the package.`
+  );
 }
-
-const lib = koffi.load(resolveDllPath());
+const lib = koffi.load(dllPath);
 
 // ---------------------------------------------------------------------------
 // Enums

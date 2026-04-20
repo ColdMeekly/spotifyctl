@@ -86,8 +86,12 @@ c.openUri(uriSearch('dark side of the moon'));
 
 ## Development
 
-Point the loader at a DLL from a CMake build tree with:
+Build the C++ DLL and copy it into `prebuilt/` before running the binding:
 
 ```sh
-LIBSPOTIFYCTL_DLL=...\build\release-shared\Release\libspotifyctl.dll node examples/now_playing.js
+cmake --build --preset release-shared
+cp ../../build/release-shared/Release/libspotifyctl.dll prebuilt/
+node examples/now_playing.js
 ```
+
+`prebuilt/` is gitignored, so a freshly built DLL never lands in commits.
