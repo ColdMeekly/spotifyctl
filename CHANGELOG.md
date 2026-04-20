@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-04-21
+
+### Fixed
+- CI: bumped the npm-publish job to Node 24 so npm ≥ 11.5.1 ships in the
+  runner. npm OIDC trusted publishing requires that version; on Node 20
+  (npm 10.x) the publish PUT was rejected as a 404 (npm masks auth failures
+  this way), so v0.3.1 never reached npm. The library code is unchanged
+  from 0.3.1 — this release exists purely to ship the v0.3.1 metadata
+  changes to npm. The npm registry will jump from `0.3.0` straight to
+  `0.3.2`; PyPI keeps the full sequence including `0.3.1`.
+
 ## [0.3.1] — 2026-04-21
 
 ### Changed
@@ -95,7 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fusion, unified `PlaybackState`, transport controls, URI builders, Catch2
   test suite, `rickroll` and `now_playing` example programs.
 
-[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.1.0...v0.2.0

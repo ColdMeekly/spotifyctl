@@ -271,9 +271,10 @@ jobs:
         with:
           packages-dir: pypi-dist
 
+      # npm OIDC trusted publishing needs npm >= 11.5.1, which ships with Node 24.
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish to NPM (trusted publisher, OIDC)
