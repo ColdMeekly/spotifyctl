@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------------------
+  # CMake path: authoritative build + tests. Produces the published artifact.
+  # ------------------------------------------------------------------------
+  cmake:
+    name: CMake build + ctest
+    runs-on: windows-latest
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute version
+        id: vars
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}".Substring(0,7)
+          "short_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage artifact tree
+        shell: pwsh
+        run: |
+          $sha = "${{ steps.vars.outputs.short_sha }}"
+          $root = "artifacts/spotify_control-$sha"
+          New-Item -ItemType Directory -Force -Path "$root/lib","$root/bin","$root/include" | Out-Null
+          Copy-Item -Recurse -Force include/* "$root/include/"
+          Copy-Item -Force build/Release/spotify_control.lib "$root/lib/"
+          Copy-Item -Force build/Release/rickroll.exe       "$root/bin/"
+          Copy-Item -Force build/Release/now_playing.exe    "$root/bin/"
+          Copy-Item -Force LICENSE,README.md "$root/"
+          "$sha`n${{ github.sha }}" | Out-File "$root/VERSION.txt" -Encoding ascii
+          Compress-Archive -Path "$root/*" -DestinationPath "artifacts/spotify_control-$sha.zip"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spotify_control-${{ steps.vars.outputs.short_sha }}
+          path: artifacts/spotify_control-${{ steps.vars.outputs.short_sha }}.zip
+
+  # ------------------------------------------------------------------------
+  # MSBuild path: guards the handwritten .sln against drift.
+  # ------------------------------------------------------------------------
+  msbuild:
+    name: MSBuild (handwritten .sln)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build solution
+        run: msbuild spotify_control.sln -p:Configuration=Release -p:Platform=x64 -m
+
+  # ------------------------------------------------------------------------
+  # Publish: push-to-main only. Creates a per-commit pre-release.
+  # ------------------------------------------------------------------------
+  publish:
+    name: Publish release
+    needs: [cmake, msbuild]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: spotify_control-${{ needs.cmake.outputs.short_sha }}
+          path: ./artifact
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ needs.cmake.outputs.short_sha }}
+          name: build-${{ needs.cmake.outputs.short_sha }}
+          prerelease: true
+          generate_release_notes: true
+          files: ./artifact/*.zip
