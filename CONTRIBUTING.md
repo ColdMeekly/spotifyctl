@@ -80,10 +80,12 @@ Tests that require Spotify to be running should skip when it isn't (see
 
 ## Releases
 
-- Every push to `main` produces a pre-release `build-<sha>` with all
-  artifacts (static zip, shared zip, Python wheel, NPM tarball).
-- Tag `vX.Y.Z` on `main` to cut a stable release. CI publishes to PyPI
-  (via OIDC trusted publisher) and NPM (via `NPM_TOKEN` secret).
+- Every push / PR runs the full CI matrix (static, shared, MSBuild, Python,
+  Node) as a verification pass. Workflow artifacts are available from the
+  Actions tab but no GitHub release is created.
+- Tag `vX.Y.Z` on `main` to cut a stable release. CI publishes the full
+  artifact set to a new GitHub release, to PyPI (via OIDC trusted
+  publisher), and to NPM (via `NPM_TOKEN` secret).
 
 ## Code of Conduct
 

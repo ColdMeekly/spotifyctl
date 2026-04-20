@@ -207,34 +207,6 @@ jobs:
           path: bindings/node/*.tgz
 
   # ------------------------------------------------------------------------
-  # Publish: pre-release per push to main.
-  # ------------------------------------------------------------------------
-  publish-prerelease:
-    name: Publish pre-release
-    needs: [cmake-static, cmake-shared, msbuild, python, node]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: ./downloaded
-
-      - name: Flatten release assets
-        run: |
-          mkdir -p release
-          find ./downloaded -type f \( -name '*.zip' -o -name '*.whl' -o -name '*.tar.gz' -o -name '*.tgz' \) -exec cp -v {} release/ \;
-          ls -la release
-
-      - name: Create pre-release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ needs.cmake-static.outputs.short_sha }}
-          name: build-${{ needs.cmake-static.outputs.short_sha }}
-          prerelease: true
-          generate_release_notes: true
-          files: release/*
-
-  # ------------------------------------------------------------------------
   # Publish: stable release on tag push (vX.Y.Z).
   # PyPI via OIDC trusted publisher; npm via NPM_TOKEN secret.
   # ------------------------------------------------------------------------

@@ -306,16 +306,18 @@ every public header via PIMPL.
 
 ## Releases
 
-Every push to `main` produces a GitHub pre-release tagged `build-<short-sha>`
-with the full artifact set:
+Releases are cut from git tags only. Tag `vX.Y.Z` on `main` and CI produces
+a stable GitHub release with the full artifact set, and also publishes to
+PyPI (via OIDC trusted publishing) and NPM automatically:
 
 - `libspotifyctl-static-<sha>.zip` — static `.lib` + headers + example exes
 - `libspotifyctl-shared-<sha>.zip` — `.dll` + import `.lib` + `spotifyctl.exe` + install tree
 - `libspotifyctl-<ver>-py3-none-win_amd64.whl` — Python wheel
 - `libspotifyctl-<ver>.tgz` — NPM tarball
 
-Tag `vX.Y.Z` on `main` to cut a stable release — CI also publishes to PyPI
-(via OIDC trusted publishing) and NPM automatically.
+Every push / PR still runs the full CI matrix (static, shared, MSBuild,
+Python wheel, Node tarball) — it just doesn't publish. Workflow artifacts
+are available from the Actions tab if you need a bleeding-edge build.
 
 Download the latest from the repository's
 [Releases](../../releases) page.
