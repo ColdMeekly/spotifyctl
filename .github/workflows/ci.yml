@@ -168,7 +168,7 @@ jobs:
           python-version: '3.12'
 
       - name: Download prebuilt DLL
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: libspotifyctl-dll-${{ needs.cmake-shared.outputs.short_sha }}
           path: bindings/python/libspotifyctl/_prebuilt
@@ -208,7 +208,7 @@ jobs:
           node-version: '20'
 
       - name: Download prebuilt DLL
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: libspotifyctl-dll-${{ needs.cmake-shared.outputs.short_sha }}
           path: bindings/node/prebuilt
@@ -245,7 +245,7 @@ jobs:
       contents: write
       id-token: write   # OIDC for PyPI + npm trusted publishing
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: ./downloaded
 
