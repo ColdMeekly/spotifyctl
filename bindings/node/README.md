@@ -14,6 +14,30 @@ npm install libspotifyctl
 
 Platform: **Windows x64 only**. `engines.node >= 18`.
 
+### Bun users
+
+Bun blocks all postinstall scripts by default. The `koffi` FFI dependency uses
+its postinstall to select the correct prebuilt native binary for your Bun ABI,
+so after install you'll see:
+
+```
+Blocked 1 postinstall. Run `bun pm untrusted` for details.
+```
+
+Trust koffi once to unblock it:
+
+```sh
+bun pm trust koffi
+```
+
+Or declare it in your own `package.json` so it's trusted on every install:
+
+```json
+{
+  "trustedDependencies": ["koffi"]
+}
+```
+
 ## Quickstart
 
 ```js

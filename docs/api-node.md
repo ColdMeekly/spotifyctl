@@ -7,6 +7,10 @@ npm install libspotifyctl
 Windows x64 only, Node 18+. Package bundles `libspotifyctl.dll` under
 `prebuilt/`.
 
+**Bun users:** Bun blocks all postinstall scripts by default, including koffi's
+prebuild selector. After install, run `bun pm trust koffi` once, or add
+`"trustedDependencies": ["koffi"]` to your `package.json`.
+
 ## Quickstart
 
 ```js
