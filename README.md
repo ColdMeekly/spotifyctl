@@ -1,20 +1,25 @@
 # spotify-title-reader
 
-Offline C++ library for reading from and controlling the Spotify desktop app on
-Windows — **no** Spotify Web API, no OAuth, no client ID, no network calls.
+A Windows C++ library for reading state from and controlling the Spotify
+desktop application entirely offline. No Spotify Web API, no OAuth, no
+client id, no network calls.
 
-Fuses three native Windows data sources:
+The library fuses three native Windows data sources into a single
+`PlaybackState` event stream:
 
-| Source | What it gives you | Requires |
+| Source | Contribution | Requires |
 |---|---|---|
-| Window-title hook (`SetWinEventHook`) | artist/title, open/close edges | always |
-| SMTC (`GlobalSystemMediaTransportControlsSessionManager`) | status, position, duration, album, album art, seek | Win10 1809+ |
+| Window-title hook (`SetWinEventHook`) | artist / title, open & close edges | always |
+| SMTC (`GlobalSystemMediaTransportControlsSessionManager`) | playback status, position, duration, album, album art, seek | Windows 10 1809+ |
 | Core Audio (`IAudioSessionManager2`, `IAudioMeterInformation`) | per-app volume, mute, real audible-output detection | always |
+
+---
 
 ## Quickstart
 
 ```cpp
 #include <spotify/client.h>
+
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -23,8 +28,7 @@ int main() {
     spotify::SpotifyClient spotify;
 
     spotify.OnStateChanged.connect([](const spotify::PlaybackState& s) {
-        std::cout << s.artist << " - " << s.title
-                  << "  [" << s.position.count() << " / " << s.duration.count() << " ms]\n";
+        std::cout << s.artist << " - " << s.title << '\n';
     });
 
     spotify.Start();
@@ -32,11 +36,172 @@ int main() {
 }
 ```
 
-That's the whole integration. No polling, no manual hook plumbing.
+That is the entire integration. No polling, no hook plumbing. Callbacks fire on
+Windows-owned background threads; do not block inside a slot.
+
+---
+
+## Reading state
+
+There are two ways to read state:
+
+1. **Push** — connect a slot to `OnStateChanged`. It fires whenever any field
+   changes, with the full fused `PlaybackState` snapshot.
+2. **Pull** — call `spotify.LatestState()` at any time from any thread.
+
+Both paths return the same `PlaybackState`:
+
+```cpp
+namespace spotify {
+
+struct PlaybackState {
+    enum class Status { Unknown, Stopped, Paused, Playing, ChangingTrack };
+
+    Status status;
+    std::string artist, title, album;
+
+    std::chrono::milliseconds position, duration;
+    std::vector<std::byte>    albumArt;   // raw thumbnail bytes (JPEG)
+
+    bool canSeek, canSkipNext, canSkipPrev;
+    bool isAd;          // Spotify is playing an advertisement
+    bool audible;       // real audio is reaching the endpoint
+
+    float appVolume;    // [0,1], or -1 before the audio session resolves
+    bool  appMuted;
+};
+
+}
+```
+
+Notes on individual fields:
+
+- **`status`** comes from SMTC and follows Windows' own media-session state
+  machine. `ChangingTrack` is Spotify flipping tracks; treat it like "about to
+  be Playing."
+- **`position` / `duration`** are delivered by SMTC events. Between events,
+  `LatestState()` returns the last reported `position`; if you need a smooth
+  counter, extrapolate by wall-clock elapsed while `status == Playing`.
+  `now_playing` demonstrates this.
+- **`albumArt`** is the raw bytes of SMTC's thumbnail stream, typically JPEG.
+  Do not assume a container format.
+- **`canSeek` / `canSkipNext` / `canSkipPrev`** reflect SMTC's advertised
+  capabilities, which track what Spotify currently permits (disabled for
+  ads, early in a queue, etc.). Use them to drive UI affordances.
+- **`isAd`** is best-effort: it is set when the window title equals
+  `"Advertisement"`. SMTC may still carry the previous track's metadata
+  during an ad, so prefer `isAd` over checking `title`.
+- **`audible`** is driven by the Core Audio peak meter with hysteresis, so it
+  distinguishes "playing-but-silent" (e.g., muted at the OS level) from
+  "actually making sound." It is independent of `status`.
+- **`appVolume`** is `-1.0f` until Spotify has produced audio at least once.
+  Windows does not create a per-app audio session until the app first outputs
+  sound; the library rebinds automatically.
+
+### Events
+
+| Signal | Fires when | Payload |
+|---|---|---|
+| `OnOpened` | the Spotify window is detected | — |
+| `OnClosed` | the Spotify window goes away | — |
+| `OnStateChanged` | any `PlaybackState` field changes | `const PlaybackState&` |
+| `OnAudibleChanged` | audible/silent edge (debounced ~1 s) | `bool audible` |
+| `OnRawTitle` | the window title changes | `const std::string&` (UTF-8) |
+
+Every signal exposes `.connect(slot) -> Token` and `.disconnect(Token)`. The
+signal type is thread-safe; slots are invoked on a stable snapshot, so a slot
+may safely disconnect itself or another slot mid-emit.
+
+---
+
+## Controls
+
+All methods return `bool` — `false` when the underlying channel is
+unavailable (e.g., Spotify not running, audio session not yet bound, SMTC
+unavailable on older Windows).
+
+### Transport
+
+```cpp
+spotify.Play();
+spotify.Pause();
+spotify.Next();
+spotify.Previous();
+spotify.Seek(std::chrono::seconds(30));
+```
+
+`Play`, `Pause`, `Next`, and `Previous` prefer SMTC when available and fall
+back to media keys (`WM_APPCOMMAND`). SMTC is the only path that supports
+`Seek`; media keys cannot express a target position.
+
+### Media-key channel
+
+For callers that want the raw channel:
+
+```cpp
+spotify.SendCommand(spotify::AppCommand::PlayPause);
+spotify.SendCommand(spotify::AppCommand::VolUp);
+spotify.SendCommand(spotify::AppCommand::MuteUnmute);
+```
+
+`AppCommand` covers `Stop`, `Play`, `Pause`, `PlayPause`, `NextTrack`,
+`PrevTrack`, `VolUp`, `VolDown`, `MuteUnmute`. Media-key volume / mute affects
+the OS master level, not the per-app level.
+
+### Per-app audio (Core Audio)
+
+```cpp
+float v = spotify.GetAppVolume();     // [0,1] or -1
+spotify.SetAppVolume(0.25f);          // changes only Spotify's slider
+bool m = spotify.IsAppMuted();
+spotify.SetAppMuted(true);            // mute only Spotify
+float peak = spotify.GetPeakAmplitude();  // [0,1] or -1, polled at 50 ms
+```
+
+These read and write the entries you see in Windows' Volume Mixer for
+Spotify specifically.
+
+### URIs
+
+```cpp
+spotify.OpenUri(spotify::uri::Track("4uLU6hMCjMI75M1A2tKUQC"));
+spotify.OpenUri(spotify::uri::Album("1DFixLWuPkv3KT3TnV35m3"));
+spotify.OpenUri(spotify::uri::Playlist("37i9dQZF1DXcBWIGoYBM5M"));
+spotify.OpenUri(spotify::uri::Artist("0gxyHStUsqpMadRV0Di1Qt"));
+spotify.OpenUri(spotify::uri::User("spotify"));
+spotify.OpenUri(spotify::uri::Search("rickroll"));   // percent-encoded
+```
+
+`OpenUri` invokes `ShellExecute` on the URI, so anything that Windows knows
+how to dispatch to Spotify works — including your own `spotify:...` strings.
+
+### Raw key injection
+
+```cpp
+spotify.SendKey(VK_RETURN);   // posts WM_KEYDOWN to the Spotify window
+```
+
+Useful for niche automations such as dismissing modal dialogs.
+
+---
+
+## Example applications
+
+Two example programs ship in `examples/`:
+
+- **`rickroll`** — opens a track URI and presses Enter, as a minimal smoke
+  test of `OpenUri` and `SendKey`.
+- **`now_playing`** — a live console dashboard (30 Hz redraw) exercising
+  every signal and every control. Keys: `Space` play/pause, `N`/`B` next/prev,
+  arrows for volume and seek, `0`-`9` jump to 0..90 %, `M` per-app mute, `K`
+  media-key mute, `I` save cover art, `S` prompt for a search, `R` open a
+  sample playlist, `Q`/`Esc` quit.
+
+---
 
 ## Build
 
-### CMake (recommended)
+### CMake
 
 ```sh
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
@@ -45,30 +210,20 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Produces `spotify_control.lib`, `rickroll.exe`, `now_playing.exe`, and
-`spotify_tests.exe`. Catch2 is fetched via `FetchContent` at configure time.
+`spotify_tests.exe`. Catch2 is pulled via `FetchContent` at configure time, so
+tests are only available through the CMake path.
 
-### Visual Studio solution
+### Visual Studio
 
-Open `spotify_control.sln`. It holds three projects:
+Open `spotify_control.sln`. It contains three projects:
 
-- `spotify_control` — the static library
-- `rickroll` — the legacy demo (depends on `spotify_control`)
-- `now_playing` — the live dashboard (depends on `spotify_control`)
+- **`spotify_control`** — the static library
+- **`rickroll`** — depends on `spotify_control`
+- **`now_playing`** — depends on `spotify_control`
 
-Outputs land in `bin\x64\{Debug,Release}\`. The solution is guarded by CI
-alongside the CMake build.
+Outputs land in `bin\x64\{Debug,Release}\`.
 
-Tests (`spotify_tests`) are only wired up in the CMake path because Catch2 is
-pulled in via `FetchContent`.
-
-## Releases
-
-Every push to `main` produces a GitHub pre-release tagged
-`build-<short-sha>` with a zip containing the library, public headers, both
-demo executables, and a `VERSION.txt`. Grab the latest from the repo's
-[Releases](../../releases) page.
-
-## Consuming from CMake
+### Consuming from CMake
 
 ```cmake
 add_subdirectory(third_party/spotify-title-reader)
@@ -78,47 +233,57 @@ target_link_libraries(my_app PRIVATE spotify::control)
 Public headers live under `include/spotify/`. `<Windows.h>` is kept out of
 every public header via PIMPL.
 
-## Controls
+---
 
-```cpp
-spotify.Play();
-spotify.Pause();
-spotify.Next();
-spotify.Previous();
-spotify.Seek(std::chrono::seconds(30));   // SMTC-only, unlike WM_APPCOMMAND
-spotify.SetAppVolume(0.25f);              // affects only Spotify
-spotify.SetAppMuted(true);                // affects only Spotify
-spotify.OpenUri(spotify::uri::Track("4uLU6hMCjMI75M1A2tKUQC"));
-```
+## Releases
 
-`Play`/`Pause`/`Next`/`Previous` prefer SMTC when available and fall back to
-`WM_APPCOMMAND` media keys. `Seek` requires SMTC — media keys can't express it.
+Every push to `main` produces a GitHub pre-release tagged `build-<short-sha>`
+containing:
+
+- `lib/spotify_control.lib`
+- `bin/rickroll.exe`, `bin/now_playing.exe`
+- `include/spotify/*.h`
+- `LICENSE`, `README.md`, `VERSION.txt`
+
+Download the latest from the repository's
+[Releases](../../releases) page.
+
+---
 
 ## Threading
 
-Signals fire on Windows-owned background threads (the WinEvent dispatcher, a
-SMTC callback thread, or the audio-poll thread). **Do not block inside slots.**
-If your application has its own loop, post the state to it and return quickly.
+Signals fire on Windows-owned background threads:
+
+- `OnOpened`, `OnClosed`, `OnRawTitle` — the WinEvent dispatcher thread
+- `OnStateChanged` — whichever source thread produced the change (SMTC
+  callback thread or audio-poll thread)
+- `OnAudibleChanged` — audio-poll thread
+
+Do not block inside a slot. If your application has its own event loop, post
+to it and return quickly.
 
 The signal implementation in `include/spotify/events.h` is thread-safe: slots
-are captured into a snapshot before invocation, so a slot can safely disconnect
-itself or other slots mid-emit.
+are captured into a snapshot before invocation.
 
-## Caveats
+---
 
-- **SMTC requires Win10 1809+.** Older builds get a degraded experience (title
-  hook only — no position, duration, or album art).
-- The Core Audio session for Spotify doesn't exist until Spotify has produced
-  audio at least once. `GetAppVolume()` returns `-1` until then; the library
-  re-resolves automatically.
-- "Artist - Track" parsing falls back to `Status::Unknown` for localized idle
-  strings the parser doesn't know (contributions welcome in
-  `src/title_parser.cpp`).
-- Ad detection is best-effort: Spotify sets the window title to
-  `"Advertisement"` during ads, but SMTC may still carry the previous track's
-  metadata. The aggregator surfaces `isAd = true` and trusts SMTC for
-  `status`.
+## Limitations
+
+- **SMTC requires Windows 10 1809 or newer.** On older builds, the library
+  falls back to the window-title hook only — `position`, `duration`,
+  `albumArt`, and seek are unavailable, and `status` is derived from title
+  sentinels.
+- **The per-app audio session only exists after Spotify first outputs sound.**
+  `appVolume` reads `-1` and `SetAppVolume` / `SetAppMuted` return `false`
+  until then. The library rebinds automatically.
+- **Ad detection is title-based.** Spotify sets the window title to
+  `"Advertisement"` during ads, but SMTC can still report the previous track
+  during the transition. Check `isAd`, not `title`.
+- **Title parsing handles the English UI only.** Localized idle strings are
+  treated as unknown; the aggregator falls back to SMTC for `status`.
+
+---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

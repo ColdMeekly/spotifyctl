@@ -58,10 +58,10 @@ jobs:
           path: artifacts/spotify_control-${{ steps.vars.outputs.short_sha }}.zip
 
   # ------------------------------------------------------------------------
-  # MSBuild path: guards the handwritten .sln against drift.
+  # MSBuild path: builds the Visual Studio solution directly.
   # ------------------------------------------------------------------------
   msbuild:
-    name: MSBuild (handwritten .sln)
+    name: MSBuild (Visual Studio solution)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
