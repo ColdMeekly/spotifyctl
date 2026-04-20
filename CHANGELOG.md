@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-04-21
+
+### Removed
+- Bindings no longer honour the `LIBSPOTIFYCTL_DLL` environment variable.
+  Both the Python and Node bindings now load exclusively from the bundled
+  `_prebuilt/` (Python) / `prebuilt/` (Node) directory and raise a clear
+  error if the DLL is missing. The Node binding previously consulted the
+  env var *first*, so any process able to set it before `require()` could
+  load an arbitrary DLL even when a bundled copy was present — that path
+  is gone. Dev workflow is unchanged in shape: build the C++ DLL and copy
+  it into the binding's prebuilt directory (still gitignored).
+
 ## [0.3.2] — 2026-04-21
 
 ### Fixed
@@ -106,7 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fusion, unified `PlaybackState`, transport controls, URI builders, Catch2
   test suite, `rickroll` and `now_playing` example programs.
 
-[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.2.0...v0.3.0
