@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main]
 
@@ -11,17 +12,17 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------------
-  # CMake path: authoritative build + tests. Produces the published artifact.
+  # CMake static: authoritative build + tests.
   # ------------------------------------------------------------------------
-  cmake:
-    name: CMake build + ctest
+  cmake-static:
+    name: CMake static + ctest
     runs-on: windows-latest
     outputs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute version
+      - name: Compute short sha
         id: vars
         shell: pwsh
         run: |
@@ -29,36 +30,95 @@ jobs:
           "short_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build-static -G "Visual Studio 17 2022" -A x64
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build-static --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --test-dir build-static -C Release --output-on-failure
 
-      - name: Stage artifact tree
+      - name: Stage static artifact
         shell: pwsh
         run: |
           $sha = "${{ steps.vars.outputs.short_sha }}"
-          $root = "artifacts/spotify_control-$sha"
+          $root = "artifacts/libspotifyctl-static-$sha"
           New-Item -ItemType Directory -Force -Path "$root/lib","$root/bin","$root/include" | Out-Null
           Copy-Item -Recurse -Force include/* "$root/include/"
-          Copy-Item -Force build/Release/spotify_control.lib "$root/lib/"
-          Copy-Item -Force build/Release/rickroll.exe       "$root/bin/"
-          Copy-Item -Force build/Release/now_playing.exe    "$root/bin/"
+          Copy-Item -Force build-static/Release/libspotifyctl.lib "$root/lib/"
+          Copy-Item -Force build-static/Release/rickroll.exe      "$root/bin/" -ErrorAction SilentlyContinue
+          Copy-Item -Force build-static/Release/now_playing.exe   "$root/bin/" -ErrorAction SilentlyContinue
           Copy-Item -Force LICENSE,README.md "$root/"
           "$sha`n${{ github.sha }}" | Out-File "$root/VERSION.txt" -Encoding ascii
-          Compress-Archive -Path "$root/*" -DestinationPath "artifacts/spotify_control-$sha.zip"
+          Compress-Archive -Path "$root/*" -DestinationPath "artifacts/libspotifyctl-static-$sha.zip"
 
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: spotify_control-${{ steps.vars.outputs.short_sha }}
-          path: artifacts/spotify_control-${{ steps.vars.outputs.short_sha }}.zip
+          name: libspotifyctl-static-${{ steps.vars.outputs.short_sha }}
+          path: artifacts/libspotifyctl-static-${{ steps.vars.outputs.short_sha }}.zip
 
   # ------------------------------------------------------------------------
-  # MSBuild path: builds the Visual Studio solution directly.
+  # CMake shared: DLL + import lib + CLI. Feeds the language bindings.
+  # ------------------------------------------------------------------------
+  cmake-shared:
+    name: CMake shared + CLI
+    runs-on: windows-latest
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute short sha
+        id: vars
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}".Substring(0,7)
+          "short_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Configure (shared)
+        run: >
+          cmake -S . -B build-shared -G "Visual Studio 17 2022" -A x64
+          -DBUILD_SHARED_LIBS=ON
+          -DLIBSPOTIFYCTL_BUILD_CLI=ON
+          -DLIBSPOTIFYCTL_BUILD_TESTS=OFF
+          -DLIBSPOTIFYCTL_INSTALL=ON
+
+      - name: Build
+        run: cmake --build build-shared --config Release --parallel
+
+      - name: Install to staging prefix
+        run: cmake --install build-shared --config Release --prefix install-shared
+
+      - name: Stage shared artifact
+        shell: pwsh
+        run: |
+          $sha = "${{ steps.vars.outputs.short_sha }}"
+          $root = "artifacts/libspotifyctl-shared-$sha"
+          New-Item -ItemType Directory -Force -Path "$root/bin","$root/lib","$root/include","$root/lib/cmake" | Out-Null
+          Copy-Item -Recurse -Force install-shared/bin/*      "$root/bin/"
+          Copy-Item -Recurse -Force install-shared/lib/*.lib  "$root/lib/"
+          Copy-Item -Recurse -Force install-shared/include/*  "$root/include/"
+          if (Test-Path install-shared/lib/cmake) {
+              Copy-Item -Recurse -Force install-shared/lib/cmake/* "$root/lib/cmake/"
+          }
+          Copy-Item -Force LICENSE,README.md "$root/"
+          "$sha`n${{ github.sha }}" | Out-File "$root/VERSION.txt" -Encoding ascii
+          Compress-Archive -Path "$root/*" -DestinationPath "artifacts/libspotifyctl-shared-$sha.zip"
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: libspotifyctl-shared-${{ steps.vars.outputs.short_sha }}
+          path: artifacts/libspotifyctl-shared-${{ steps.vars.outputs.short_sha }}.zip
+
+      - name: Upload loose DLL for binding jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: libspotifyctl-dll-${{ steps.vars.outputs.short_sha }}
+          path: install-shared/bin/libspotifyctl.dll
+
+  # ------------------------------------------------------------------------
+  # MSBuild path: sanity-check the VS solution.
   # ------------------------------------------------------------------------
   msbuild:
     name: MSBuild (Visual Studio solution)
@@ -67,27 +127,163 @@ jobs:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
       - name: Build solution
-        run: msbuild spotify_control.sln -p:Configuration=Release -p:Platform=x64 -m
+        run: msbuild libspotifyctl.sln -p:Configuration=Release -p:Platform=x64 -m
 
   # ------------------------------------------------------------------------
-  # Publish: push-to-main only. Creates a per-commit pre-release.
+  # Python wheel: py3-none-win_amd64 bundling the prebuilt DLL.
   # ------------------------------------------------------------------------
-  publish:
-    name: Publish release
-    needs: [cmake, msbuild]
+  python:
+    name: Python wheel
+    needs: [cmake-shared]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download prebuilt DLL
+        uses: actions/download-artifact@v4
+        with:
+          name: libspotifyctl-dll-${{ needs.cmake-shared.outputs.short_sha }}
+          path: bindings/python/libspotifyctl/_prebuilt
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build wheel
+
+      - name: Build wheel + sdist
+        working-directory: bindings/python
+        run: python -m build
+
+      - name: Smoke-load wheel
+        shell: pwsh
+        working-directory: bindings/python
+        run: |
+          $whl = Get-ChildItem dist/*.whl | Select-Object -First 1
+          python -m pip install $whl.FullName
+          python -c "import libspotifyctl as l; c = l.SpotifyClient(); c.start(); c.stop(); c.close(); print('ok', l.__version__)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: bindings/python/dist/*
+
+  # ------------------------------------------------------------------------
+  # Node tarball: koffi-based wrapper with DLL bundled under prebuilt/.
+  # ------------------------------------------------------------------------
+  node:
+    name: Node tarball
+    needs: [cmake-shared]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download prebuilt DLL
+        uses: actions/download-artifact@v4
+        with:
+          name: libspotifyctl-dll-${{ needs.cmake-shared.outputs.short_sha }}
+          path: bindings/node/prebuilt
+
+      - name: Install
+        working-directory: bindings/node
+        run: npm install --no-audit --no-fund
+
+      - name: Pack
+        working-directory: bindings/node
+        run: npm pack
+
+      - name: Smoke test (non-fatal — Spotify not present on CI)
+        working-directory: bindings/node
+        run: node --test test/ || echo "::warning::node --test exited nonzero (expected without Spotify present)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-dist
+          path: bindings/node/*.tgz
+
+  # ------------------------------------------------------------------------
+  # Publish: pre-release per push to main.
+  # ------------------------------------------------------------------------
+  publish-prerelease:
+    name: Publish pre-release
+    needs: [cmake-static, cmake-shared, msbuild, python, node]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: spotify_control-${{ needs.cmake.outputs.short_sha }}
-          path: ./artifact
+          path: ./downloaded
 
-      - name: Create release
+      - name: Flatten release assets
+        run: |
+          mkdir -p release
+          find ./downloaded -type f \( -name '*.zip' -o -name '*.whl' -o -name '*.tar.gz' -o -name '*.tgz' \) -exec cp -v {} release/ \;
+          ls -la release
+
+      - name: Create pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ needs.cmake.outputs.short_sha }}
-          name: build-${{ needs.cmake.outputs.short_sha }}
+          tag_name: build-${{ needs.cmake-static.outputs.short_sha }}
+          name: build-${{ needs.cmake-static.outputs.short_sha }}
           prerelease: true
           generate_release_notes: true
-          files: ./artifact/*.zip
+          files: release/*
+
+  # ------------------------------------------------------------------------
+  # Publish: stable release on tag push (vX.Y.Z).
+  # PyPI via OIDC trusted publisher; npm via NPM_TOKEN secret.
+  # ------------------------------------------------------------------------
+  publish-release:
+    name: Publish stable release
+    needs: [cmake-static, cmake-shared, msbuild, python, node]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write   # OIDC for PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ./downloaded
+
+      - name: Flatten release assets
+        run: |
+          mkdir -p release pypi-dist
+          find ./downloaded -type f \( -name '*.zip' -o -name '*.tgz' \) -exec cp -v {} release/ \;
+          find ./downloaded/python-dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp -v {} release/ \;
+          find ./downloaded/python-dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp -v {} pypi-dist/ \;
+          ls -la release pypi-dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: false
+          generate_release_notes: true
+          files: release/*
+
+      - name: Publish to PyPI (trusted publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pypi-dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to NPM
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          tgz=$(find ./downloaded/node-dist -name '*.tgz' | head -n1)
+          echo "Publishing $tgz"
+          npm publish "$tgz" --access public

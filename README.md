@@ -1,8 +1,16 @@
-# spotify-title-reader
+# libspotifyctl
 
-A Windows C++ library for reading state from and controlling the Spotify
-desktop application entirely offline. No Spotify Web API, no OAuth, no
-client id, no network calls.
+A Windows library for reading state from and controlling the Spotify desktop
+application entirely offline. No Spotify Web API, no OAuth, no client id, no
+network calls.
+
+Ships as:
+
+- a native **C++20** library (`spotifyctl::spotifyctl`)
+- a stable **C ABI** (`libspotifyctl.dll` — consumable from any language)
+- a **`spotifyctl`** command-line tool
+- a **Python** package (`pip install libspotifyctl`)
+- a **Node.js** package (`npm install libspotifyctl`)
 
 The library fuses three native Windows data sources into a single
 `PlaybackState` event stream:
@@ -15,7 +23,56 @@ The library fuses three native Windows data sources into a single
 
 ---
 
-## Quickstart
+## Language bindings
+
+| Language | Install | Reference |
+|---|---|---|
+| C++ | `find_package(libspotifyctl CONFIG)` | [docs/api-cpp.md](docs/api-cpp.md) |
+| C (any FFI) | link `libspotifyctl.dll`, include `<spotify/c_api.h>` | [docs/api-c.md](docs/api-c.md) |
+| Python 3.9+ | `pip install libspotifyctl` | [docs/api-python.md](docs/api-python.md) |
+| Node 18+ | `npm install libspotifyctl` | [docs/api-node.md](docs/api-node.md) |
+
+Every binding exposes the same concepts: a `SpotifyClient` with start/stop,
+a `PlaybackState` snapshot, a handful of state-change signals, transport
+controls, per-app audio controls, and URI builders. Pick the language; the
+shape is the same.
+
+### Python
+
+```python
+from libspotifyctl import SpotifyClient
+
+with SpotifyClient() as c:
+    c.on_state_changed(lambda s: print(f"{s.artist} — {s.title}"))
+    input("press enter to quit...\n")
+```
+
+### Node
+
+```js
+const { SpotifyClient } = require('libspotifyctl');
+const c = new SpotifyClient();
+c.on('stateChanged', s => console.log(`${s.artist} — ${s.title}`));
+c.start();
+```
+
+---
+
+## CLI
+
+```sh
+spotifyctl now-playing --json
+spotifyctl watch              # streams NDJSON of state changes
+spotifyctl seek 1:23
+spotifyctl volume set 0.5
+spotifyctl mute toggle
+```
+
+Full reference: [docs/cli.md](docs/cli.md).
+
+---
+
+## Quickstart (C++)
 
 ```cpp
 #include <spotify/client.h>
@@ -201,33 +258,45 @@ Two example programs ship in `examples/`:
 
 ## Build
 
-### CMake
+### CMake (presets)
 
 ```sh
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
+cmake --preset release
+cmake --build --preset release
+ctest --preset release --output-on-failure
 ```
 
-Produces `spotify_control.lib`, `rickroll.exe`, `now_playing.exe`, and
-`spotify_tests.exe`. Catch2 is pulled via `FetchContent` at configure time, so
-tests are only available through the CMake path.
+Other presets: `debug`, `release-shared` (DLL + `spotifyctl.exe`),
+`release-install` (adds `cmake --install`).
+
+Static preset produces `libspotifyctl.lib`, `rickroll.exe`, `now_playing.exe`,
+and `libspotifyctl_tests.exe`. Catch2 is pulled via `FetchContent` at configure
+time, so tests are only available through the CMake path.
 
 ### Visual Studio
 
-Open `spotify_control.sln`. It contains three projects:
+Open `libspotifyctl.sln`. It contains:
 
-- **`spotify_control`** — the static library
-- **`rickroll`** — depends on `spotify_control`
-- **`now_playing`** — depends on `spotify_control`
+- **`libspotifyctl`** — the library
+- **`rickroll`** / **`now_playing`** — C++ examples
+- **`spotifyctl`** — the CLI
 
 Outputs land in `bin\x64\{Debug,Release}\`.
 
 ### Consuming from CMake
 
+After `cmake --install`:
+
 ```cmake
-add_subdirectory(third_party/spotify-title-reader)
-target_link_libraries(my_app PRIVATE spotify::control)
+find_package(libspotifyctl CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE spotifyctl::spotifyctl)
+```
+
+Or in-tree:
+
+```cmake
+add_subdirectory(third_party/libspotifyctl)
+target_link_libraries(my_app PRIVATE spotifyctl::spotifyctl)
 ```
 
 Public headers live under `include/spotify/`. `<Windows.h>` is kept out of
@@ -238,12 +307,15 @@ every public header via PIMPL.
 ## Releases
 
 Every push to `main` produces a GitHub pre-release tagged `build-<short-sha>`
-containing:
+with the full artifact set:
 
-- `lib/spotify_control.lib`
-- `bin/rickroll.exe`, `bin/now_playing.exe`
-- `include/spotify/*.h`
-- `LICENSE`, `README.md`, `VERSION.txt`
+- `libspotifyctl-static-<sha>.zip` — static `.lib` + headers + example exes
+- `libspotifyctl-shared-<sha>.zip` — `.dll` + import `.lib` + `spotifyctl.exe` + install tree
+- `libspotifyctl-<ver>-py3-none-win_amd64.whl` — Python wheel
+- `libspotifyctl-<ver>.tgz` — NPM tarball
+
+Tag `vX.Y.Z` on `main` to cut a stable release — CI also publishes to PyPI
+(via OIDC trusted publishing) and NPM automatically.
 
 Download the latest from the repository's
 [Releases](../../releases) page.
