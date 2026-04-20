@@ -1,0 +1,50 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Visual Studio 17 2022",
+            "architecture": { "value": "x64", "strategy": "set" },
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+            }
+        },
+        {
+            "name": "debug",
+            "inherits": "base",
+            "displayName": "Debug (static)"
+        },
+        {
+            "name": "release",
+            "inherits": "base",
+            "displayName": "Release (static)"
+        },
+        {
+            "name": "release-shared",
+            "inherits": "release",
+            "displayName": "Release (shared/DLL)",
+            "cacheVariables": { "BUILD_SHARED_LIBS": "ON" }
+        },
+        {
+            "name": "release-install",
+            "inherits": "release-shared",
+            "displayName": "Release + install tree",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "debug",           "configurePreset": "debug",           "configuration": "Debug"   },
+        { "name": "release",         "configurePreset": "release",         "configuration": "Release" },
+        { "name": "release-shared",  "configurePreset": "release-shared",  "configuration": "Release" },
+        { "name": "release-install", "configurePreset": "release-install", "configuration": "Release", "targets": ["install"] }
+    ],
+    "testPresets": [
+        { "name": "debug",   "configurePreset": "debug",   "configuration": "Debug",   "output": { "outputOnFailure": true } },
+        { "name": "release", "configurePreset": "release", "configuration": "Release", "output": { "outputOnFailure": true } }
+    ]
+}

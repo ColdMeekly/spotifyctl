@@ -81,7 +81,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\spotify_control.vcxproj">
+    <ProjectReference Include="..\..\libspotifyctl.vcxproj">
       <Project>{a7b1c3d5-e001-4f00-b100-000000000001}</Project>
     </ProjectReference>
   </ItemGroup>

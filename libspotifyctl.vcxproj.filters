@@ -17,15 +17,20 @@
     <ClCompile Include="src\smtc_source.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\audio_session.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\title_parser.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\c_api.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\spotify\client.h"><Filter>Public Headers</Filter></ClInclude>
     <ClInclude Include="include\spotify\control.h"><Filter>Public Headers</Filter></ClInclude>
     <ClInclude Include="include\spotify\events.h"><Filter>Public Headers</Filter></ClInclude>
+    <ClInclude Include="include\spotify\export.h"><Filter>Public Headers</Filter></ClInclude>
     <ClInclude Include="include\spotify\playback.h"><Filter>Public Headers</Filter></ClInclude>
     <ClInclude Include="include\spotify\title_parser.h"><Filter>Public Headers</Filter></ClInclude>
+    <ClInclude Include="include\spotify\version.h"><Filter>Public Headers</Filter></ClInclude>
+    <ClInclude Include="include\spotify\c_api.h"><Filter>Public Headers</Filter></ClInclude>
     <ClInclude Include="src\impl.h"><Filter>Internal Headers</Filter></ClInclude>
     <ClInclude Include="src\smtc_source.h"><Filter>Internal Headers</Filter></ClInclude>
     <ClInclude Include="src\audio_session.h"><Filter>Internal Headers</Filter></ClInclude>
+    <ClInclude Include="src\json_writer.h"><Filter>Internal Headers</Filter></ClInclude>
   </ItemGroup>
 </Project>

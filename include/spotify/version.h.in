@@ -1,0 +1,12 @@
+#pragma once
+
+#define LIBSPOTIFYCTL_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define LIBSPOTIFYCTL_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define LIBSPOTIFYCTL_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define LIBSPOTIFYCTL_VERSION_STRING "@PROJECT_VERSION@"
+
+#ifdef __cplusplus
+namespace spotify {
+constexpr const char* Version() noexcept { return LIBSPOTIFYCTL_VERSION_STRING; }
+}  // namespace spotify
+#endif

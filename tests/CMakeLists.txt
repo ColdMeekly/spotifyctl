@@ -10,21 +10,22 @@ FetchContent_MakeAvailable(Catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 
-add_executable(spotify_tests
+add_executable(libspotifyctl_tests
     test_title_parser.cpp
     test_signal.cpp
     test_uri_builders.cpp
+    test_c_api.cpp
 )
 
-target_link_libraries(spotify_tests PRIVATE
-    spotify_control
+target_link_libraries(libspotifyctl_tests PRIVATE
+    spotifyctl
     Catch2::Catch2WithMain
 )
 
 if(MSVC)
-    target_compile_definitions(spotify_tests PRIVATE
+    target_compile_definitions(libspotifyctl_tests PRIVATE
         UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
         _WIN32_WINNT=0x0A00)
 endif()
 
-catch_discover_tests(spotify_tests)
+catch_discover_tests(libspotifyctl_tests)

@@ -304,7 +304,7 @@ int main() {
 
         char buf[512];
 
-        line("\x1b[1;32m=== Spotify Title Reader — live demo ===\x1b[0m");
+        line("\x1b[1;32m=== libspotifyctl — now_playing ===\x1b[0m");
         std::snprintf(buf, sizeof(buf),
                       "  running=%s  status=\x1b[33m%s\x1b[0m  ad=%s  audible=%s",
                       client.IsRunning() ? "yes" : "no",
