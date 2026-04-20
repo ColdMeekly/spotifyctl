@@ -6,9 +6,9 @@
 // build-interface include directory is listed before the source one.
 
 #define LIBSPOTIFYCTL_VERSION_MAJOR 0
-#define LIBSPOTIFYCTL_VERSION_MINOR 2
-#define LIBSPOTIFYCTL_VERSION_PATCH 0
-#define LIBSPOTIFYCTL_VERSION_STRING "0.2.0"
+#define LIBSPOTIFYCTL_VERSION_MINOR 3
+#define LIBSPOTIFYCTL_VERSION_PATCH 1
+#define LIBSPOTIFYCTL_VERSION_STRING "0.3.1"
 
 #ifdef __cplusplus
 namespace spotify {

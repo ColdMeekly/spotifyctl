@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-04-21
+
+### Changed
+- Project homepage now points at https://spotifyctl.cldmk.ly (PyPI, npm, and
+  CMake metadata). Source / Issues URLs unchanged.
+- PyPI metadata: added a `Changelog` entry under `[project.urls]` and a
+  handful of additional classifiers (Win10/11, Console, library subcategories)
+  to improve discoverability.
+- Node `package.json` keywords expanded to align with the Python keyword set
+  (`spotifyctl`, `media-controls`, `audio`, `cli`, `koffi`, `automation`,
+  `win32`).
+
+### Fixed
+- `include/spotify/version.h` (the static fallback used by the MSBuild path)
+  now reports the correct project version. Previously stuck at `0.2.0`.
+
 ## [0.3.0] — 2026-04-20
 
 ### Added
@@ -79,7 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fusion, unified `PlaybackState`, transport controls, URI builders, Catch2
   test suite, `rickroll` and `now_playing` example programs.
 
-[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/ColdMeekly/spotifyctl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ColdMeekly/spotifyctl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ColdMeekly/spotifyctl/releases/tag/v0.1.0
