@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] — 2026-04-21
+
+### Fixed
+- `LatestPositionSmooth()` / `spotifyctl_latest_position_smooth_ms` / Python
+  `position_smooth_ms` / Node `positionSmoothMs` no longer step visibly on
+  every SMTC republish. Each SMTC timeline update carries the current
+  position with tens-of-ms async delay, and the previous implementation
+  re-anchored on every delta — producing a ~1 Hz visible jump during steady
+  playback. The anchor now only advances across real discontinuities
+  (play/pause, seek, track change); small skew between SMTC's clock and the
+  monotonic clock is absorbed, so polling the smooth position at 30–60 Hz
+  produces a steady progress bar. `OnPositionChanged` ticks deliver the same
+  smoothed value.
+- `LatestPositionSmooth()` no longer returns a bogus "system uptime" value
+  when status flips to Playing via the window-title parser before SMTC has
+  published (previously the anchor was a default-constructed `time_point`
+  at epoch 0, so `now − 0` yielded many minutes of phantom elapsed time).
+  Returns 0 until SMTC publishes on a fresh client.
+
 ## [0.3.3] — 2026-04-21
 
 ### Removed

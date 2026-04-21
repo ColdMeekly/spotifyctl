@@ -260,9 +260,15 @@ SPOTIFYCTL_API void             spotifyctl_disconnect        (spotifyctl_client 
                                                               spotifyctl_token token);
 
 /* Current position with monotonic-clock extrapolation applied while playback
- * is Playing. When Paused / Stopped / Unknown, returns the raw anchor
- * position (same value as spotifyctl_latest_state().position_ms). Returns 0
- * when c is NULL. Thread-safe. */
+ * is Playing. When not Playing (Paused / Stopped / Unknown / ChangingTrack),
+ * returns the raw anchor position (same value as
+ * spotifyctl_latest_state().position_ms).
+ *
+ * Extrapolation only advances across SMTC updates that look like real
+ * discontinuities (play/pause/seek/track edges). Tens-of-ms skew between
+ * SMTC's clock and the monotonic clock is absorbed so the progress does not
+ * visibly step on every SMTC republish. Returns 0 when c is NULL or when
+ * SMTC has not yet published anything on this client. Thread-safe. */
 SPOTIFYCTL_API int64_t spotifyctl_latest_position_smooth_ms(const spotifyctl_client *c);
 
 /* -------------------------------------------------------------------------- */

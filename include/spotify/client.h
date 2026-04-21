@@ -68,9 +68,13 @@ class SpotifyClient {
     PlaybackState LatestState() const;
 
     // Current position with monotonic-clock-based extrapolation applied when
-    // playback is Playing. When Paused/Stopped, returns the raw anchor
-    // position. Consumers building progress bars should poll this rather than
-    // reimplement `position + (now - anchor)` on top of OnStateChanged.
+    // playback is Playing. When not Playing, returns the raw anchor position.
+    // Returns 0 until SMTC has published at least once.
+    //
+    // The anchor only advances across real SMTC discontinuities (play/pause/
+    // seek/track edges); steady-state republishes with small clock skew are
+    // absorbed so polling this at 30–60 Hz produces a smooth progress bar
+    // without visible steps on every SMTC update.
     std::chrono::milliseconds LatestPositionSmooth() const;
 
     // ---- Controls -----------------------------------------------------

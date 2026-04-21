@@ -22,6 +22,7 @@
 #include "spotify/title_parser.h"
 
 #include "aggregator.h"
+#include "position.h"
 
 namespace spotify {
 
@@ -44,18 +45,21 @@ struct SpotifyClient::Impl {
 
     mutable std::mutex stateMu;
     PlaybackState latest;  // published unified state
-    // Anchor captured at the moment `latest.position` was valid in real time
-    // (i.e., the last SMTC position delta). Extrapolation is:
-    //     latest.position + (steady_clock::now() - latestAnchor)
-    std::chrono::steady_clock::time_point latestAnchor{};
+    // Smoothing anchor for the *published* state. Updated from `smtcAnchor`
+    // under fragMu→stateMu inside Aggregate(). `valid == false` means SMTC
+    // has never published on this client — LatestPositionSmooth should fall
+    // back to 0 rather than extrapolate from a zero-initialized time_point.
+    PositionAnchor publishedAnchor;
 
     // Per-source fragments. Aggregator merges these into `latest`.
     mutable std::mutex fragMu;
     PlaybackState smtcFrag;   // artist/title/album/position/duration/art/status/caps
-    // Real-time anchor for `smtcFrag.position`. Updated only when SMTC
-    // reports a position or status change — leaving audio/title-only
-    // republishes out of the loop so the anchor stays honest.
-    std::chrono::steady_clock::time_point smtcAnchor{};
+    // Smoothing anchor owned by the SMTC layer. `smtcFrag.position` always
+    // reflects the latest raw SMTC value (jumpy across republishes by design),
+    // but this anchor sticks until SMTC reports a real discontinuity (status
+    // change, seek, or track jump) so that OnPositionChanged / LatestPositionSmooth
+    // tick smoothly across SMTC's tens-of-ms clock skew.
+    PositionAnchor smtcAnchor;
     AudioFrag     audioFrag;
     TitleFrag     titleFrag;
 

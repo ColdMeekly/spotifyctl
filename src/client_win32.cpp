@@ -192,15 +192,18 @@ void SpotifyClient::Impl::SetWindow(HWND hWnd) {
 // ------------------------------------------------------------------------
 
 void SpotifyClient::Impl::ApplySmtc(const PlaybackState& frag) {
+    const auto now = std::chrono::steady_clock::now();
     {
         std::lock_guard lock(fragMu);
-        // Anchor the smooth-position clock only on real SMTC deltas. Position
-        // or status edges mean SMTC has spoken — anything else (audio/title
-        // aggregation) will leave the anchor alone and keep extrapolating.
-        if (frag.position != smtcFrag.position ||
-            frag.status   != smtcFrag.status) {
-            smtcAnchor = std::chrono::steady_clock::now();
-        }
+        // Advance the smoothing anchor only on real discontinuities. In steady
+        // Playing state, each SMTC republish carries the current position with
+        // some async delay, and re-anchoring on every update produces a visible
+        // step each tick. UpdateAnchor keeps the previous anchor whenever the
+        // new SMTC observation agrees with our running extrapolation within
+        // kDefaultAnchorSnapThreshold, so OnPositionChanged ticks smoothly.
+        smtcAnchor = UpdateAnchor(
+            smtcAnchor, smtcFrag.status, frag.status,
+            frag.position, frag.duration, now);
         smtcFrag = frag;
     }
     Aggregate();
@@ -234,13 +237,14 @@ void SpotifyClient::Impl::ApplyTitle(std::string_view rawTitle) {
 void SpotifyClient::Impl::ResetFragments() {
     std::lock_guard lock(fragMu);
     smtcFrag = PlaybackState{};
+    smtcAnchor = {};  // invalidate; LatestPositionSmooth will return 0
     audioFrag = {};
     titleFrag = {};
 }
 
 void SpotifyClient::Impl::Aggregate() {
     PlaybackState out;
-    std::chrono::steady_clock::time_point anchor;
+    PositionAnchor anchor;
     {
         std::lock_guard lock(fragMu);
         out = FuseFragments(smtcFrag, audioFrag, titleFrag);
@@ -253,7 +257,7 @@ void SpotifyClient::Impl::Aggregate() {
         if (latest == out) return;
         prev = latest;
         latest = out;
-        latestAnchor = anchor;
+        publishedAnchor = anchor;
     }
 
     // Edge signals fire BEFORE OnStateChanged, so consumers wiring both don't
@@ -269,22 +273,20 @@ void SpotifyClient::Impl::MaybeFirePositionTick() {
     if (self->OnPositionChanged.size() == 0) return;
 
     PlaybackState::Status status;
-    std::chrono::milliseconds position;
     std::chrono::milliseconds duration;
-    std::chrono::steady_clock::time_point anchor;
+    PositionAnchor anchor;
     {
         std::lock_guard lock(stateMu);
         status   = latest.status;
-        position = latest.position;
         duration = latest.duration;
-        anchor   = latestAnchor;
+        anchor   = publishedAnchor;
     }
-    if (status != PlaybackState::Status::Playing) return;
+    // Gate on Playing AND a valid anchor — a title-derived "Playing" with no
+    // SMTC anchor has no reliable position to tick on.
+    if (status != PlaybackState::Status::Playing || !anchor.valid) return;
 
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - anchor);
     self->OnPositionChanged(
-        ExtrapolatePosition(status, position, duration, elapsed));
+        SmoothPosition(anchor, status, duration, std::chrono::steady_clock::now()));
 }
 
 // ------------------------------------------------------------------------
@@ -366,21 +368,23 @@ PlaybackState SpotifyClient::LatestState() const {
 
 std::chrono::milliseconds SpotifyClient::LatestPositionSmooth() const {
     PlaybackState::Status status;
-    std::chrono::milliseconds position;
     std::chrono::milliseconds duration;
-    std::chrono::steady_clock::time_point anchor;
+    std::chrono::milliseconds rawPosition;
+    PositionAnchor anchor;
     {
         std::lock_guard lock(m_->stateMu);
-        status   = m_->latest.status;
-        position = m_->latest.position;
-        duration = m_->latest.duration;
-        anchor   = m_->latestAnchor;
+        status      = m_->latest.status;
+        duration    = m_->latest.duration;
+        rawPosition = m_->latest.position;
+        anchor      = m_->publishedAnchor;
     }
-    if (status != PlaybackState::Status::Playing) return position;
+    // No SMTC anchor yet (fresh client, or state derived from title only).
+    // Fall back to the raw latest.position — which is 0 when SMTC is silent —
+    // rather than extrapolating from a zero-initialized time_point.
+    if (!anchor.valid) return rawPosition;
 
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - anchor);
-    return ExtrapolatePosition(status, position, duration, elapsed);
+    return SmoothPosition(anchor, status, duration,
+                          std::chrono::steady_clock::now());
 }
 
 bool SpotifyClient::SendCommand(AppCommand cmd) {
