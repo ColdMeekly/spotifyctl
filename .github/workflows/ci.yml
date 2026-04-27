@@ -20,7 +20,7 @@ jobs:
     outputs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Compute short sha
         id: vars
@@ -66,7 +66,7 @@ jobs:
     outputs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Compute short sha
         id: vars
@@ -125,7 +125,7 @@ jobs:
     name: CMake debug + AddressSanitizer
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Enable MSVC developer command prompt
         uses: ilammy/msvc-dev-cmd@v1
@@ -148,7 +148,7 @@ jobs:
     name: MSBuild (Visual Studio solution)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: microsoft/setup-msbuild@v2
       - name: Build solution
         run: msbuild libspotifyctl.sln -p:Configuration=Release -p:Platform=x64 -m
@@ -161,7 +161,7 @@ jobs:
     needs: [cmake-shared]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5
         with:
@@ -201,7 +201,7 @@ jobs:
     needs: [cmake-shared]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
